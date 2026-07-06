@@ -5,13 +5,19 @@ services:
       dockerfile: scripts/Dockerfile
       target: development
     ports:
-      - "8080:8080"
+      - "${API_DEV_PORT}:${APP_INTERNAL_PORT}"
     volumes:
       - .:/app
       - go_modules:/go/pkg/mod
     environment:
-      - PORT=8080
-      - APP_ENV=development
+      - PORT=${APP_INTERNAL_PORT}
+      - APP_ENV=${APP_ENV_DEV}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - GITHUB_APP_SLUG=${GITHUB_APP_SLUG}
+      - GITHUB_APP_ID=${GITHUB_APP_ID}
+      - GITHUB_PRIVATE_KEY=${GITHUB_PRIVATE_KEY}
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
     profiles:
       - dev
 
@@ -23,12 +29,38 @@ services:
       args:
         - ENTRYPOINT_PATH=./cmd/api
     ports:
-      - "8081:8080"
+      - "${API_PROD_PORT}:${APP_INTERNAL_PORT}"
     environment:
-      - PORT=8080
-      - APP_ENV=production
+      - PORT=${APP_INTERNAL_PORT}
+      - APP_ENV=${APP_ENV_PROD}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - GITHUB_APP_SLUG=${GITHUB_APP_SLUG}
+      - GITHUB_APP_ID=${GITHUB_APP_ID}
+      - GITHUB_PRIVATE_KEY=${GITHUB_PRIVATE_KEY}
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
     profiles:
+      - prod
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+    profiles:
+      - dev
       - prod
 
 volumes:
   go_modules:
+  pg_data:
