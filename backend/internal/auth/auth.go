@@ -9,15 +9,56 @@ import (
 	"net/url"
 	"slate-backend/pkg/config"
 	"slate-backend/pkg/types"
+	"slate-backend/pkg/utils"
 	"time"
 )
 
-
-func GetInstallURL(cfg *config.Config, stateToken string) string {
-	return fmt.Sprintf("https://github.com/apps/%s/installations/new?state=%s",
-		cfg.GithubAppSlug,
+func GetOAuthURL(cfg *config.Config, stateToken string) string {
+	return fmt.Sprintf("https://github.com/login/oauth/authorize?client_id=%s&scope=repo,user:email&state=%s",
+		cfg.GithubClientID,
 		url.QueryEscape(stateToken),
 	)
+}
+
+func GetInstallURL(cfg *config.Config) string {
+	return fmt.Sprintf("https://github.com/apps/%s/installations/new?setup_action=install",
+		cfg.GithubAppSlug,
+	)
+}
+
+func GetUserInstallations(accessToken string, ctx context.Context) (int64, error) {
+	apiURL := "https://api.github.com/user/installations"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create installations request: %w", err)
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", accessToken))
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	client := &http.Client{Timeout: 12 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("failed to reach GitHub installations API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("github installations endpoint returned unexpected status: %d", resp.StatusCode)
+	}
+
+	var installationsResp types.GitHubInstallationsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&installationsResp); err != nil {
+		return 0, fmt.Errorf("failed to decode installations response: %w", err)
+	}
+
+	if len(installationsResp.Installations) == 0 {
+		return 0, fmt.Errorf("no installations found for this user")
+	}
+
+	return installationsResp.Installations[0].ID, nil
 }
 
 func GetAccessToken(cfg *config.Config, payloadCode string, ctx context.Context) (types.GitHubTokenResponse, error) {
@@ -32,9 +73,6 @@ func GetAccessToken(cfg *config.Config, payloadCode string, ctx context.Context)
 	if err != nil {
 		return types.GitHubTokenResponse{}, fmt.Errorf("failed to process request data: %w", err)
 	}
-
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -69,9 +107,6 @@ func GetAccessToken(cfg *config.Config, payloadCode string, ctx context.Context)
 
 func GetUserProfile(cfg *config.Config, accessToken string, ctx context.Context) (types.GitHubAuthUserResponse, error) {
 	apiURL := "https://api.github.com/user"
-
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
@@ -153,4 +188,39 @@ func getPrimaryEmail(accessToken string, ctx context.Context) (string, error) {
 	}
 
 	return "", fmt.Errorf("no primary email records found associated with this authorization scope")
+}
+
+func GetInstallationAccessToken(cfg *config.Config, installationID int64, ctx context.Context) (string, error) {
+	apiURL := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", installationID)
+	githubJWT, err := utils.GenerateGithubJWT(cfg)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate Github JWT: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create profile request payload: %w", err)
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", githubJWT))
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	client := &http.Client{Timeout: 12 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to reach GitHub Installation API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		return "", fmt.Errorf("github installation endpoint returned unexpected status: %d", resp.StatusCode)
+	}
+
+	var apiResponse types.InstallationAccessTokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
+		return "", fmt.Errorf("failed to decode GitHub Installation access token response: %w", err)
+	}
+
+	return apiResponse.InstallationAccessToken, nil
 }
