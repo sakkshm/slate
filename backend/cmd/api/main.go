@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"slate-backend/internal/api"
+	"slate-backend/internal/db"
 	"slate-backend/pkg/config"
 	"syscall"
 	"time"
@@ -17,8 +19,14 @@ import (
 
 func main() {
 
-	config := config.LoadConfig()
-	apiEngine := api.NewAPIEngine(config)
+	// Configure System
+	cfg := config.LoadConfig()
+	db, err := db.New(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("Unable to connect to DB")
+	}
+
+	apiEngine := api.NewAPIEngine(cfg, db)
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
@@ -40,6 +48,22 @@ func main() {
 	// Auth Routes
 	r.Get(api.AuthInitRoute, apiEngine.HandleInitiateLogin)
 	r.Post(api.AuthCallbackRoute, apiEngine.HandleCallback)
+	r.Get(api.AuthInstallRoute, apiEngine.HandleInstallURL)
+
+	// Protected Routes
+	r.Group(func(r chi.Router) {
+		r.Use(apiEngine.AuthMiddleware)
+		
+		// Auth
+		r.Post(api.AuthLogoutRoute, apiEngine.HandleAuthLogout)
+		
+		// User
+		r.Get(api.UserRoute, apiEngine.HandleGetUserProfile)
+		r.Get(api.UserRepoRoute, apiEngine.HandleGetUserRepos)
+		
+		// Repo
+		r.Get(api.RepoBranchesRoute, apiEngine.HandleGetRepoBranches)
+	})
 
 	port := os.Getenv("PORT")
 	if port == "" {
