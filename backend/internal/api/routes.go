@@ -9,5 +9,6 @@ const (
 	UserRoute     = "/api/user"
 	UserRepoRoute = "/api/user/repos"
 
-	RepoBranchesRoute = "/api/repos/branches"
+	RepoBranchesRoute  = "/api/repos/branches"
+	RepoContentsRoute  = "/api/repos/contents"
 )

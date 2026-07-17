@@ -22,5 +22,9 @@ type GithubInstallationReposResponse struct {
 }
 
 type RepoBranchesResponse struct {
-    Branches []GithubRepoBranch `json:"branches"`
+	Branches []GithubRepoBranch `json:"branches"`
+}
+
+type RepoContentsResponse struct {
+	Entries []GithubRepoContentEntry `json:"entries"`
 }

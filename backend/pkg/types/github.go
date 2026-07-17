@@ -9,6 +9,16 @@ type GithubInstallationRepo struct {
 	DefaultBranch string `json:"default_branch"`
 }
 
+type GithubRepoContentEntry struct {
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	SHA         string `json:"sha"`
+	Size        int64  `json:"size"`
+	Type        string `json:"type"`
+	HTMLURL     string `json:"html_url"`
+	DownloadURL string `json:"download_url"`
+}
+
 type GithubRepoBranch struct {
 	Name      string `json:"name"`
 	Commit    struct {

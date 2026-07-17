@@ -63,6 +63,7 @@ func main() {
 		
 		// Repo
 		r.Get(api.RepoBranchesRoute, apiEngine.HandleGetRepoBranches)
+		r.Get(api.RepoContentsRoute, apiEngine.HandleGetRepoContents)
 	})
 
 	port := os.Getenv("PORT")
