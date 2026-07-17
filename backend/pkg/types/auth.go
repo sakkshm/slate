@@ -19,3 +19,16 @@ type GitHubEmailResponse struct {
 	Primary  bool   `json:"primary"`
 	Verified bool   `json:"verified"`
 }
+
+type GitHubInstallationsResponse struct {
+	Installations []GitHubInstallation `json:"installations"`
+}
+
+type GitHubInstallation struct {
+	ID      int64                  `json:"id"`
+	Account GitHubInstallationAccount `json:"account"`
+}
+
+type GitHubInstallationAccount struct {
+	Login string `json:"login"`
+}

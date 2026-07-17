@@ -8,7 +8,7 @@ import (
 
 type Project struct {
 	ID      uuid.UUID `json:"id"`
-	OwnerID uuid.UUID `json:"owner_id"`
+	OwnerID int64     `json:"owner_id"`
 	Owner   User      `json:"owner,omitempty"`
 	Name    string    `json:"name"`
 	Slug    string    `json:"slug"`
