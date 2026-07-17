@@ -12,14 +12,19 @@ services:
     environment:
       - PORT=${APP_INTERNAL_PORT}
       - APP_ENV=${APP_ENV_DEV}
+      - DATABASE_URL=${DATABASE_URL}
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
       - GITHUB_APP_SLUG=${GITHUB_APP_SLUG}
       - GITHUB_APP_ID=${GITHUB_APP_ID}
-      - GITHUB_PRIVATE_KEY=${GITHUB_PRIVATE_KEY}
+      - GITHUB_PRIVATE_KEY_PATH=${GITHUB_PRIVATE_KEY_PATH}
       - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - JWT_SECRET=${JWT_SECRET}
     profiles:
       - dev
+    depends_on:
+      - db
 
   api-prod:
     build:
@@ -33,14 +38,19 @@ services:
     environment:
       - PORT=${APP_INTERNAL_PORT}
       - APP_ENV=${APP_ENV_PROD}
+      - DATABASE_URL=${DATABASE_URL}
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
       - GITHUB_APP_SLUG=${GITHUB_APP_SLUG}
       - GITHUB_APP_ID=${GITHUB_APP_ID}
-      - GITHUB_PRIVATE_KEY=${GITHUB_PRIVATE_KEY}
+      - GITHUB_PRIVATE_KEY_PATH=${GITHUB_PRIVATE_KEY_PATH}
       - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - JWT_SECRET=${JWT_SECRET}
     profiles:
       - prod
+    depends_on:
+      - db
 
   db:
     image: postgres:17-alpine
