@@ -14,7 +14,6 @@ export const apiClient = {
     try {
       response = await fetch(url, {
         method: 'GET',
-        // CRITICAL: Tells the browser to accept and store cookies from cross-origin requests
         credentials: 'include', 
       });
     } catch (networkError: any) {
@@ -32,7 +31,7 @@ export const apiClient = {
       try {
         const errorData = await response.json();
         if (errorData?.code) code = errorData.code;
-        if (errorData?.message) message = errorData.message;
+        if (errorData?.msg) message = errorData.msg;
       } catch {
         message = response.statusText || message;
       }
@@ -64,7 +63,6 @@ export const apiClient = {
           'Content-Type': 'application/json',
         },
         body: body ? JSON.stringify(body) : undefined,
-        // CRITICAL: Send existing cookies up, and allow incoming ones to be saved
         credentials: 'include', 
       });
     } catch (networkError: any) {
