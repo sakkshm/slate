@@ -7,16 +7,16 @@ import (
 )
 
 type Project struct {
-	ID      uuid.UUID `json:"id"`
-	OwnerID int64     `json:"owner_id"`
+	ID      uuid.UUID `json:"id" gorm:"primaryKey"`
+	OwnerID int64     `json:"owner_id" gorm:"index;not null"`
 	Owner   User      `json:"owner,omitempty"`
-	Name    string    `json:"name"`
-	Slug    string    `json:"slug"`
+	Name    string    `json:"name" gorm:"not null"`
+	Slug    string    `json:"slug" gorm:"not null;uniqueIndex:idx_owner_slug"`
 
-	RepoURL    string `json:"repo_url"`
-	RepoID     string `json:"repo_id"`
-	RepoName   string `json:"repo_name"`
-	ProdBranch string `json:"prod_branch"`
+	RepoID    int64  `json:"repo_id" gorm:"not null"`
+	RepoURL   string `json:"repo_url" gorm:"not null"`
+	RepoName  string `json:"repo_name" gorm:"not null"`
+	ProdBranch string `json:"prod_branch" gorm:"not null"`
 
 	Framework string `json:"framework"`
 	RootDir   string `json:"root_dir"`
@@ -35,7 +35,7 @@ type Build struct {
 	ProjectID uuid.UUID `json:"project_id"`
 	CommitSHA string    `json:"commit_sha"`
 	CommitMsg string    `json:"commit_message"`
-	Status    string    `json:"status"` // e.g., "QUEUED", "BUILDING", "READY", "FAILED"
+	Status    string    `json:"status"`
 
 	LogLocation   string `json:"log_location"`
 	AssetLocation string `json:"asset_location"`
