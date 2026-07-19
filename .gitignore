@@ -4,3 +4,8 @@ repomix-output.xml
 
 /api
 /worker
+
+# Build artifacts
+backend/api
+backend/worker
+backend/tmp/
