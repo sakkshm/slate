@@ -11,4 +11,7 @@ const (
 
 	RepoBranchesRoute  = "/api/repos/branches"
 	RepoContentsRoute  = "/api/repos/contents"
+
+	ProjectRoute     = "/api/projects"
+	ProjectByIDRoute = "/api/projects/{projectID}"
 )

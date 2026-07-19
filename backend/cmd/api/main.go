@@ -64,6 +64,13 @@ func main() {
 		// Repo
 		r.Get(api.RepoBranchesRoute, apiEngine.HandleGetRepoBranches)
 		r.Get(api.RepoContentsRoute, apiEngine.HandleGetRepoContents)
+
+		// Projects
+		r.Post(api.ProjectRoute, apiEngine.HandleCreateProject)
+		r.Get(api.ProjectRoute, apiEngine.HandleListProjects)
+		r.Get(api.ProjectByIDRoute, apiEngine.HandleGetProject)
+		r.Put(api.ProjectByIDRoute, apiEngine.HandleUpdateProject)
+		r.Delete(api.ProjectByIDRoute, apiEngine.HandleDeleteProject)
 	})
 
 	port := os.Getenv("PORT")
