@@ -1,14 +1,25 @@
 services:
+  base-runner:
+    build:
+      context: .
+      dockerfile: scripts/base-runner.Dockerfile
+    image: slate-base-runner:latest
+    entrypoint: ["true"]
+    profiles:
+      - dev
+      - prod
+
   api-dev:
     build:
       context: .
-      dockerfile: scripts/Dockerfile
+      dockerfile: scripts/api.Dockerfile
       target: development
     ports:
       - "${API_DEV_PORT}:${APP_INTERNAL_PORT}"
     volumes:
       - .:/app
       - go_modules:/go/pkg/mod
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - PORT=${APP_INTERNAL_PORT}
       - APP_ENV=${APP_ENV_DEV}
@@ -21,20 +32,37 @@ services:
       - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - JWT_SECRET=${JWT_SECRET}
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_BUCKET=${MINIO_BUCKET}
+      - DOCKER_SOCKET=/var/run/docker.sock
+      - BUILD_IMAGE=slate-base-runner:latest
     profiles:
       - dev
     depends_on:
-      - db
+      base-runner:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
 
   api-prod:
     build:
       context: .
-      dockerfile: scripts/Dockerfile
+      dockerfile: scripts/api.Dockerfile
       target: production
       args:
         - ENTRYPOINT_PATH=./cmd/api
     ports:
       - "${API_PROD_PORT}:${APP_INTERNAL_PORT}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - PORT=${APP_INTERNAL_PORT}
       - APP_ENV=${APP_ENV_PROD}
@@ -47,10 +75,103 @@ services:
       - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - JWT_SECRET=${JWT_SECRET}
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_BUCKET=${MINIO_BUCKET}
+      - DOCKER_SOCKET=/var/run/docker.sock
+      - BUILD_IMAGE=slate-base-runner:latest
     profiles:
       - prod
     depends_on:
-      - db
+      base-runner:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  worker-dev:
+    build:
+      context: .
+      dockerfile: scripts/worker.Dockerfile
+      target: development
+    volumes:
+      - .:/app
+      - go_modules:/go/pkg/mod
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - APP_ENV=${APP_ENV_DEV}
+      - DATABASE_URL=${DATABASE_URL}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - GITHUB_APP_SLUG=${GITHUB_APP_SLUG}
+      - GITHUB_APP_ID=${GITHUB_APP_ID}
+      - GITHUB_PRIVATE_KEY_PATH=${GITHUB_PRIVATE_KEY_PATH}
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_BUCKET=${MINIO_BUCKET}
+      - DOCKER_SOCKET=/var/run/docker.sock
+      - BUILD_IMAGE=slate-base-runner:latest
+    profiles:
+      - dev
+    depends_on:
+      base-runner:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  worker-prod:
+    build:
+      context: .
+      dockerfile: scripts/worker.Dockerfile
+      target: production
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - APP_ENV=${APP_ENV_PROD}
+      - DATABASE_URL=${DATABASE_URL}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - GITHUB_APP_SLUG=${GITHUB_APP_SLUG}
+      - GITHUB_APP_ID=${GITHUB_APP_ID}
+      - GITHUB_PRIVATE_KEY_PATH=${GITHUB_PRIVATE_KEY_PATH}
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_BUCKET=${MINIO_BUCKET}
+      - DOCKER_SOCKET=/var/run/docker.sock
+      - BUILD_IMAGE=slate-base-runner:latest
+    profiles:
+      - prod
+    depends_on:
+      base-runner:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
 
   db:
     image: postgres:17-alpine
@@ -63,7 +184,42 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+    profiles:
+      - dev
+      - prod
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+    profiles:
+      - dev
+      - prod
+
+  minio:
+    image: minio/minio
+    ports:
+      - "${MINIO_API_PORT}:9000"
+      - "${MINIO_CONSOLE_PORT}:9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY}
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD-SHELL", "cat < /dev/null > /dev/tcp/127.0.0.1/9000"]
       interval: 3s
       timeout: 3s
       retries: 5
@@ -74,3 +230,5 @@ services:
 volumes:
   go_modules:
   pg_data:
+  redis_data:
+  minio_data:

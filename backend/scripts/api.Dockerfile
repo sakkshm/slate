@@ -7,7 +7,7 @@ RUN go mod download
 FROM base AS development
 RUN go install github.com/air-verse/air@latest
 COPY . .
-CMD ["air", "--build.cmd", "go build -o ./tmp/main ./cmd/api/main.go", "--build.bin", "./tmp/main"]
+CMD ["air", "-c", "scripts/api.air.toml"]
 
 FROM base AS builder
 ARG ENTRYPOINT_PATH=./cmd/api
@@ -18,3 +18,4 @@ FROM scratch AS production
 COPY --from=builder /server /server
 EXPOSE 8080
 ENTRYPOINT ["/server"]
+

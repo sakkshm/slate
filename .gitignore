@@ -1,3 +1,6 @@
 .env
 *.pem
 repomix-output.xml
+
+/api
+/worker
