@@ -16,6 +16,18 @@ type Config struct {
 	GithubWebhookSecret string
 	EncryptionKey       string
 	JWTSecret           string
+
+	RedisAddr     string
+	RedisPassword string
+
+	MinIOEndpoint  string
+	MinIOAccessKey string
+	MinIOSecretKey string
+	MinIOBucket    string
+
+	DockerSocketPath string
+	BuildImageBase   string
+	BuildTimeout     int
 }
 
 func LoadConfig() *Config {
@@ -35,6 +47,18 @@ func LoadConfig() *Config {
 		GithubPrivateKey:    privateKey,
 		EncryptionKey:       getRequiredEnv("ENCRYPTION_KEY"),
 		JWTSecret:           getRequiredEnv("JWT_SECRET"),
+
+		RedisAddr:     getEnvWithDefault("REDIS_ADDR", "redis:6379"),
+		RedisPassword: getEnvWithDefault("REDIS_PASSWORD", ""),
+
+		MinIOEndpoint:  getEnvWithDefault("MINIO_ENDPOINT", "minio:9000"),
+		MinIOAccessKey: getRequiredEnv("MINIO_ACCESS_KEY"),
+		MinIOSecretKey: getRequiredEnv("MINIO_SECRET_KEY"),
+		MinIOBucket:    getEnvWithDefault("MINIO_BUCKET", "slate-assets"),
+
+		DockerSocketPath: getEnvWithDefault("DOCKER_SOCKET", "/var/run/docker.sock"),
+		BuildImageBase:   getEnvWithDefault("BUILD_IMAGE", "slate-base-runner:latest"),
+		BuildTimeout:     300,
 	}
 
 	return cfg
@@ -53,6 +77,14 @@ func getRequiredEnv(key string) string {
 	value, exists := os.LookupEnv(key)
 	if !exists || value == "" {
 		log.Fatalf("FATAL CONFIG ERROR: Environment variable [%s] is required but missing.", key)
+	}
+	return value
+}
+
+func getEnvWithDefault(key string, defaultValue string) string {
+	value, exists := os.LookupEnv(key)
+	if !exists || value == "" {
+		return defaultValue
 	}
 	return value
 }
