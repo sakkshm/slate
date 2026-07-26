@@ -16,6 +16,7 @@ func New(dbURL string) (*gorm.DB, error) {
 	err = db.AutoMigrate(
 		&types.User{},
 		&types.Project{},
+		&types.Build{},
 	)
 	if err != nil {
 		return nil, err

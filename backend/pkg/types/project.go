@@ -13,9 +13,9 @@ type Project struct {
 	Name    string    `json:"name" gorm:"not null"`
 	Slug    string    `json:"slug" gorm:"not null;uniqueIndex:idx_owner_slug"`
 
-	RepoID    int64  `json:"repo_id" gorm:"not null"`
-	RepoURL   string `json:"repo_url" gorm:"not null"`
-	RepoName  string `json:"repo_name" gorm:"not null"`
+	RepoID     int64  `json:"repo_id" gorm:"not null"`
+	RepoURL    string `json:"repo_url" gorm:"not null"`
+	RepoName   string `json:"repo_name" gorm:"not null"`
 	ProdBranch string `json:"prod_branch" gorm:"not null"`
 
 	Framework string `json:"framework"`
@@ -31,11 +31,13 @@ type Project struct {
 }
 
 type Build struct {
-	ID        uuid.UUID `json:"id"`
-	ProjectID uuid.UUID `json:"project_id"`
-	CommitSHA string    `json:"commit_sha"`
-	CommitMsg string    `json:"commit_message"`
-	Status    string    `json:"status"`
+	ID        uuid.UUID `json:"id" gorm:"primaryKey"`
+	ProjectID uuid.UUID `json:"project_id" gorm:"index;not null"`
+
+	CommitSHA string      `json:"commit_sha"`
+	CommitMsg string      `json:"commit_message"`
+	Status    BuildEvents `json:"status" gorm:"default:'queued'"`
+	Duration  int64       `json:"duration"`
 
 	LogLocation   string `json:"log_location"`
 	AssetLocation string `json:"asset_location"`
