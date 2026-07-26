@@ -9,3 +9,7 @@ repomix-output.xml
 backend/api
 backend/worker
 backend/tmp/
+
+# Docs
+docs/plan.md
+docs/redis-guide.md
