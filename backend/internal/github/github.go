@@ -82,3 +82,38 @@ func GetRepoContents(userInstallAccessToken string, repoOwner string, repoName s
 
 	return apiResponse, nil
 }
+
+func GetRepoLastCommit(userInstallAccessToken string, repoOwner string, repoName string, branchName string, ctx context.Context) (types.GithubRepoLastCommit, error) {
+	
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/commits/%s?per_page=1", repoOwner, repoName, branchName)
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return types.GithubRepoLastCommit{}, fmt.Errorf("failed to create last commit request payload: %w", err)
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", userInstallAccessToken))
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	client := &http.Client{Timeout: 12 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return types.GithubRepoLastCommit{}, fmt.Errorf("failed to reach GitHub API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return types.GithubRepoLastCommit{}, fmt.Errorf("Github repos endpoint returned unexpected status: %d", resp.StatusCode)
+	}
+
+	var apiResponse types.GithubRepoLastCommit
+	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
+		return types.GithubRepoLastCommit{}, fmt.Errorf("failed to decode GitHub branches response: %w", err)
+	}
+
+	return apiResponse, nil
+}

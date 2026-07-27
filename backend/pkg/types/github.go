@@ -20,9 +20,16 @@ type GithubRepoContentEntry struct {
 }
 
 type GithubRepoBranch struct {
-	Name      string `json:"name"`
-	Commit    struct {
+	Name   string `json:"name"`
+	Commit struct {
 		SHA string `json:"sha"`
 	} `json:"commit"`
 	Protected bool `json:"protected"`
+}
+
+type GithubRepoLastCommit struct {
+	SHA    string `json:"sha"`
+	Commit struct {
+		Message string `json:"message"`
+	} `json:"commit"`
 }
