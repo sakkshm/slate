@@ -1,19 +1,18 @@
 package api
 
 import (
+	"slate-backend/internal/clients"
 	"slate-backend/pkg/config"
-
-	"gorm.io/gorm"
 )
 
 type APIEngine struct {
-	config *config.Config
-	database     *gorm.DB
+	config  *config.Config
+	clients *clients.Clients
 }
 
-func NewAPIEngine(config *config.Config, DB *gorm.DB) *APIEngine {
+func NewAPIEngine(config *config.Config, c *clients.Clients) *APIEngine {
 	return &APIEngine{
-		config: config,
-		database: DB,
+		config:  config,
+		clients: c,
 	}
 }

@@ -42,7 +42,7 @@ func (e *APIEngine) HandleCreateProject(w http.ResponseWriter, r *http.Request) 
 	}
 	repoOwner, repoName := parts[0], parts[1]
 
-	userProfile, err := user.GetUserProfile(userID, e.database, r.Context())
+	userProfile, err := user.GetUserProfile(userID, e.clients.DB, r.Context())
 	if err != nil {
 		utils.WriteHTTPError(w, http.StatusInternalServerError, "USR_ERR", "Unable to fetch user profile")
 		return
@@ -107,7 +107,7 @@ func (e *APIEngine) HandleCreateProject(w http.ResponseWriter, r *http.Request) 
 		OutDir:     req.OutDir,
 	}
 
-	if err := project.CreateProject(e.database, proj, r.Context()); err != nil {
+	if err := project.CreateProject(e.clients.DB, proj, r.Context()); err != nil {
 		utils.WriteHTTPError(w, http.StatusInternalServerError, "DB_ERR", "Failed to create project")
 		return
 	}
@@ -123,7 +123,7 @@ func (e *APIEngine) HandleListProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	projects, err := project.GetProjectsByOwner(userID, e.database, r.Context())
+	projects, err := project.GetProjectsByOwner(userID, e.clients.DB, r.Context())
 	if err != nil {
 		utils.WriteHTTPError(w, http.StatusInternalServerError, "DB_ERR", "Failed to fetch projects")
 		return
@@ -146,7 +146,7 @@ func (e *APIEngine) HandleGetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	proj, err := project.GetProjectByID(projectID, e.database, r.Context())
+	proj, err := project.GetProjectByID(projectID, e.clients.DB, r.Context())
 	if err != nil {
 		utils.WriteHTTPError(w, http.StatusInternalServerError, "DB_ERR", "Failed to fetch project")
 		return
@@ -208,12 +208,12 @@ func (e *APIEngine) HandleUpdateProject(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := project.UpdateProject(e.database, projectID, userID, updates, r.Context()); err != nil {
+	if err := project.UpdateProject(e.clients.DB, projectID, userID, updates, r.Context()); err != nil {
 		utils.WriteHTTPError(w, http.StatusInternalServerError, "DB_ERR", "Failed to update project")
 		return
 	}
 
-	updated, err := project.GetProjectByID(projectID, e.database, r.Context())
+	updated, err := project.GetProjectByID(projectID, e.clients.DB, r.Context())
 	if err != nil {
 		utils.WriteHTTPError(w, http.StatusInternalServerError, "DB_ERR", "Failed to fetch updated project")
 		return
@@ -236,7 +236,7 @@ func (e *APIEngine) HandleDeleteProject(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := project.DeleteProject(projectID, userID, e.database, r.Context()); err != nil {
+	if err := project.DeleteProject(projectID, userID, e.clients.DB, r.Context()); err != nil {
 		utils.WriteHTTPError(w, http.StatusInternalServerError, "DB_ERR", "Failed to delete project")
 		return
 	}

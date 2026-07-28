@@ -113,7 +113,7 @@ func (e *APIEngine) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:            currentTimeStamp,
 	}
 
-	err = user.UpsertUserProfile(e.database, userProfile, r.Context())
+	err = user.UpsertUserProfile(e.clients.DB, userProfile, r.Context())
 	if err != nil {
 		utils.WriteHTTPError(w, http.StatusInternalServerError, "DB_ERR", "Failed to save user profile")
 		return

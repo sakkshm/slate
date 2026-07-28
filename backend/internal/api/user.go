@@ -16,7 +16,7 @@ func (e *APIEngine) HandleGetUserProfile(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	userProfile, err := user.GetUserProfile(userID, e.database, r.Context())
+	userProfile, err := user.GetUserProfile(userID, e.clients.DB, r.Context())
 	if err != nil {
 		utils.WriteHTTPError(w, http.StatusUnauthorized, "USR_NOT_FND", "User not found")
 		return
@@ -37,7 +37,7 @@ func (e *APIEngine) HandleGetUserRepos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userProfile, err := user.GetUserProfile(userID, e.database, r.Context())
+	userProfile, err := user.GetUserProfile(userID, e.clients.DB, r.Context())
 	if err != nil {
 		utils.WriteHTTPError(w, http.StatusUnauthorized, "USR_NOT_FND", "User not found")
 		return

@@ -31,7 +31,7 @@ func (e *APIEngine) HandleGetRepoBranches(w http.ResponseWriter, r *http.Request
 	}
 	repoOwner, repoName := parts[0], parts[1]
 
-	userProfile, err := user.GetUserProfile(userID, e.database, r.Context())
+	userProfile, err := user.GetUserProfile(userID, e.clients.DB, r.Context())
 	if err != nil {
 		utils.WriteHTTPError(w, http.StatusInternalServerError, "USR_NOT_FND", "Unable to fetch user profile")
 		return
@@ -80,7 +80,7 @@ func (e *APIEngine) HandleGetRepoContents(w http.ResponseWriter, r *http.Request
 	ref := r.URL.Query().Get("ref")
 	path := r.URL.Query().Get("path")
 
-	userProfile, err := user.GetUserProfile(userID, e.database, r.Context())
+	userProfile, err := user.GetUserProfile(userID, e.clients.DB, r.Context())
 	if err != nil {
 		utils.WriteHTTPError(w, http.StatusInternalServerError, "USR_NOT_FND", "Unable to fetch user profile")
 		return
