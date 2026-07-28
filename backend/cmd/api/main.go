@@ -7,7 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"slate-backend/internal/api"
-	"slate-backend/internal/db"
+	"slate-backend/internal/clients"
 	"slate-backend/pkg/config"
 	"syscall"
 	"time"
@@ -21,12 +21,12 @@ func main() {
 
 	// Configure System
 	cfg := config.LoadConfig()
-	db, err := db.New(cfg.DatabaseURL)
+	c, err := clients.New(cfg)
 	if err != nil {
-		log.Fatalf("Unable to connect to DB")
+		log.Fatalf("Unable to initialize clients: %v", err)
 	}
 
-	apiEngine := api.NewAPIEngine(cfg, db)
+	apiEngine := api.NewAPIEngine(cfg, c)
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
@@ -71,6 +71,11 @@ func main() {
 		r.Get(api.ProjectByIDRoute, apiEngine.HandleGetProject)
 		r.Put(api.ProjectByIDRoute, apiEngine.HandleUpdateProject)
 		r.Delete(api.ProjectByIDRoute, apiEngine.HandleDeleteProject)
+
+		// Builds
+		r.Post(api.BuildsRoute, apiEngine.HandleTriggerBuild)
+		r.Get(api.BuildsRoute, apiEngine.HandleListBuilds)
+		r.Get(api.BuildByIDRoute, apiEngine.HandleGetBuild)
 	})
 
 	port := os.Getenv("PORT")
