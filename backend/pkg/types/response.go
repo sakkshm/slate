@@ -28,3 +28,13 @@ type RepoBranchesResponse struct {
 type RepoContentsResponse struct {
 	Entries []GithubRepoContentEntry `json:"entries"`
 }
+
+type TriggerBuildResponse struct {
+	BuildID string `json:"build_id"`
+	Status  string `json:"status"`
+}
+
+type ListBuildsResponse struct {
+	Builds []Build `json:"builds"`
+	Total  int64   `json:"total"`
+}
