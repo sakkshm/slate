@@ -15,14 +15,16 @@ import (
 )
 
 type BuildRequest struct {
-	ID         string
-	RepoURL    string
-	RootDir    string
-	InstallCmd string
-	BuildCmd   string
-	OutDir     string
-	Env        []string
-	StagingDir string
+	ID                      string
+	RepoURL                 string
+	InstallationAccessToken string
+	CommitSHA               string
+	RootDir                 string
+	InstallCmd              string
+	BuildCmd                string
+	OutDir                  string
+	Env                     []string
+	StagingDir              string
 }
 
 func RunBuild(ctx context.Context, cli *client.Client, req BuildRequest) (string, int64, string, error) {
@@ -32,11 +34,37 @@ func RunBuild(ctx context.Context, cli *client.Client, req BuildRequest) (string
 		}
 	}
 
-	templateCmd := fmt.Sprintf(
-		"git clone --depth 1 %s . && cd ./%s",
-		req.RepoURL,
-		strings.TrimPrefix(req.RootDir, "/"),
-	)
+	repoURL := req.RepoURL
+	if req.InstallationAccessToken != "" {
+		repoURL = strings.Replace(repoURL, "https://", "https://x-access-token:"+req.InstallationAccessToken+"@", 1)
+	}
+
+	workDir := strings.TrimPrefix(req.RootDir, "/")
+	if workDir == "" {
+		workDir = "."
+	}
+
+	assetDir := strings.TrimPrefix(req.OutDir, "/")
+	if req.RootDir != "" && assetDir != "" {
+		assetDir = strings.TrimPrefix(req.RootDir, "/") + "/" + assetDir
+	}
+
+	var templateCmd string
+
+	if req.CommitSHA != "" {
+		templateCmd = fmt.Sprintf(
+			"git init . && git remote add origin %s && git fetch --depth 1 origin %s && git checkout FETCH_HEAD && cd ./%s",
+			repoURL,
+			req.CommitSHA,
+			workDir,
+		)
+	} else {
+		templateCmd = fmt.Sprintf(
+			"git clone --depth 1 %s . && cd ./%s",
+			repoURL,
+			workDir,
+		)
+	}
 
 	if req.InstallCmd != "" {
 		templateCmd += " && " + req.InstallCmd
@@ -44,8 +72,8 @@ func RunBuild(ctx context.Context, cli *client.Client, req BuildRequest) (string
 	if req.BuildCmd != "" {
 		templateCmd += " && " + req.BuildCmd
 	}
-	if req.StagingDir != "" && req.OutDir != "" {
-		templateCmd += fmt.Sprintf(" && mkdir -p /staging && cp -r /app/%s/* /staging/", strings.TrimPrefix(req.OutDir, "/"))
+	if req.StagingDir != "" && assetDir != "" {
+		templateCmd += fmt.Sprintf(" && mkdir -p /staging && cp -r /app/%s/* /staging/", assetDir)
 	}
 
 	config := &container.Config{
