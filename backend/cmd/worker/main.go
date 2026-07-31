@@ -5,23 +5,86 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"slate-backend/internal/build"
 	"slate-backend/internal/clients"
+	githubclient "slate-backend/internal/github"
 	"slate-backend/internal/queue"
 	"slate-backend/internal/runner"
 	"slate-backend/pkg/config"
+	"slate-backend/pkg/types"
 	"syscall"
 	"time"
 
 	"github.com/docker/docker/client"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 )
+
+func buildLogSink(cli *redis.Client, buildID string) func(line string) {
+	return func(line string) {
+
+		logCtx, logCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer logCancel()
+
+		if err := queue.WriteLogLine(logCtx, cli, buildID, line); err != nil {
+			fmt.Printf("[WORKER] log store error: %v\n", err)
+		}
+
+		if err := queue.PublishLogLine(logCtx, cli, buildID, line); err != nil {
+			fmt.Printf("[WORKER] log publish error: %v\n", err)
+		}
+	}
+}
+
+func archiveBuildLogs(ctx context.Context, c *clients.Clients, buildID uuid.UUID) {
+	lines, err := queue.GetLogLines(ctx, c.Redis, buildID.String())
+	if err != nil {
+		fmt.Printf("[WORKER] Failed to read logs for archival: %v\n", err)
+	} else if len(lines) > 0 {
+		if err := build.UpdateBuildLogContent(c.DB, buildID, strings.Join(lines, "\n"), ctx); err != nil {
+			fmt.Printf("[WORKER] Failed to archive build logs: %v\n", err)
+		}
+	}
+
+	if err := queue.PublishBuildDone(ctx, c.Redis, buildID.String()); err != nil {
+		fmt.Printf("[WORKER] Failed to publish build done: %v\n", err)
+	}
+}
+
+func reportCommitStatus(cfg *config.Config, event *types.BuildEvent, state, description string) {
+	parts := strings.SplitN(event.RepoName, "/", 2)
+	if len(parts) != 2 {
+		fmt.Printf("[WORKER] Invalid repo name %q for commit status\n", event.RepoName)
+		return
+	}
+
+	targetURL := fmt.Sprintf("%s/projects/%s/builds/%s", cfg.AppURL, event.ProjectID, event.BuildID)
+
+	statusCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := githubclient.CreateCommitStatus(
+		event.InstallationAccessToken,
+		parts[0],
+		parts[1],
+		event.CommitSHA,
+		state,
+		description,
+		"slate",
+		targetURL,
+		statusCtx,
+	); err != nil {
+		fmt.Printf("[WORKER] Commit status %s for build %s failed: %v\n", state, event.BuildID, err)
+	}
+}
 
 func main() {
 	cfg := config.LoadConfig()
@@ -91,11 +154,18 @@ func main() {
 			continue
 		}
 
-		if err := build.UpdateBuildStatus(c.DB, buildID, "building", ctx); err != nil {
+		claimed, err := build.UpdateBuildStatusIfQueued(c.DB, buildID, ctx)
+		if err != nil {
 			fmt.Printf("[WORKER] Failed to update build status: %v\n", err)
 			queue.AckBuild(ctx, c.Redis, msgID)
 			continue
 		}
+		if !claimed {
+			fmt.Printf("[WORKER] Build %s was cancelled while queued, skipping\n", buildID)
+			queue.AckBuild(ctx, c.Redis, msgID)
+			continue
+		}
+		reportCommitStatus(cfg, event, "pending", "Build started")
 
 		startTime := time.Now()
 		stagingDir := filepath.Join(stagingRoot, buildID.String())
@@ -112,14 +182,40 @@ func main() {
 			OutDir:                  event.OutDir,
 			Env:                     event.Env,
 			StagingDir:              stagingDir,
+			LogSink:                 buildLogSink(c.Redis, buildID.String()),
 		}
 
 		buildTimeout := time.Duration(cfg.BuildTimeout) * time.Second
 		buildCtx, buildCancel := context.WithTimeout(ctx, buildTimeout)
+
+		cancelSub := c.Redis.Subscribe(ctx, queue.CancelChannelKey(buildID.String()))
+		go func() {
+			for {
+				if _, err := cancelSub.ReceiveMessage(ctx); err != nil {
+					return
+				}
+				buildCancel()
+				return
+			}
+		}()
+
 		containerID, statusCode, _, err := runner.RunBuild(buildCtx, dockerClient, buildReq)
 		buildCancel()
+		cancelSub.Close()
 
 		duration := time.Since(startTime).Milliseconds()
+
+		if errors.Is(err, context.Canceled) {
+			fmt.Printf("[WORKER] Build %s cancelled\n", buildID)
+			build.UpdateBuildStatus(c.DB, buildID, "cancelled", ctx)
+			build.UpdateBuildDuration(c.DB, buildID, duration, ctx)
+			cleanupContainer(ctx, dockerClient, containerID)
+			os.RemoveAll(stagingDir)
+			archiveBuildLogs(ctx, c, buildID)
+			reportCommitStatus(cfg, event, "failure", "Build cancelled")
+			queue.AckBuild(ctx, c.Redis, msgID)
+			continue
+		}
 
 		if err != nil || statusCode != 0 {
 			fmt.Printf("[WORKER] Build %s failed (exit %d): %v\n", buildID, statusCode, err)
@@ -127,6 +223,8 @@ func main() {
 			build.UpdateBuildDuration(c.DB, buildID, duration, ctx)
 			cleanupContainer(ctx, dockerClient, containerID)
 			os.RemoveAll(stagingDir)
+			archiveBuildLogs(ctx, c, buildID)
+			reportCommitStatus(cfg, event, "failure", "Build failed")
 			queue.AckBuild(ctx, c.Redis, msgID)
 			continue
 		}
@@ -139,6 +237,8 @@ func main() {
 			build.UpdateBuildStatus(c.DB, buildID, "failed", ctx)
 			cleanupContainer(ctx, dockerClient, containerID)
 			os.RemoveAll(stagingDir)
+			archiveBuildLogs(ctx, c, buildID)
+			reportCommitStatus(cfg, event, "failure", "Build failed")
 			queue.AckBuild(ctx, c.Redis, msgID)
 			continue
 		}
@@ -152,6 +252,8 @@ func main() {
 			build.UpdateBuildStatus(c.DB, buildID, "failed", ctx)
 			cleanupContainer(ctx, dockerClient, containerID)
 			os.RemoveAll(stagingDir)
+			archiveBuildLogs(ctx, c, buildID)
+			reportCommitStatus(cfg, event, "failure", "Build failed")
 			queue.AckBuild(ctx, c.Redis, msgID)
 			continue
 		}
@@ -164,6 +266,8 @@ func main() {
 				build.UpdateBuildStatus(c.DB, buildID, "failed", ctx)
 				cleanupContainer(ctx, dockerClient, containerID)
 				os.RemoveAll(stagingDir)
+				archiveBuildLogs(ctx, c, buildID)
+				reportCommitStatus(cfg, event, "failure", "Build failed")
 				queue.AckBuild(ctx, c.Redis, msgID)
 				continue
 			}
@@ -176,6 +280,8 @@ func main() {
 				build.UpdateBuildStatus(c.DB, buildID, "failed", ctx)
 				cleanupContainer(ctx, dockerClient, containerID)
 				os.RemoveAll(stagingDir)
+				archiveBuildLogs(ctx, c, buildID)
+				reportCommitStatus(cfg, event, "failure", "Build failed")
 				queue.AckBuild(ctx, c.Redis, msgID)
 				continue
 			}
@@ -198,6 +304,8 @@ func main() {
 
 		cleanupContainer(ctx, dockerClient, containerID)
 		os.RemoveAll(stagingDir)
+		archiveBuildLogs(ctx, c, buildID)
+		reportCommitStatus(cfg, event, "success", "Build succeeded")
 		queue.AckBuild(ctx, c.Redis, msgID)
 	}
 }

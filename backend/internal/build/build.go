@@ -72,11 +72,30 @@ func UpdateBuildStatus(database *gorm.DB, buildID uuid.UUID, status types.BuildE
 	return result.Error
 }
 
+func UpdateBuildStatusIfQueued(database *gorm.DB, buildID uuid.UUID, ctx context.Context) (bool, error) {
+	result := database.WithContext(ctx).
+		Model(&types.Build{}).
+		Where("id = ? AND status = ?", buildID, string(types.StatusQueued)).
+		Update("status", string(types.StatusBuilding))
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
+}
+
 func UpdateBuildDuration(database *gorm.DB, buildID uuid.UUID, durationMs int64, ctx context.Context) error {
 	result := database.WithContext(ctx).
 		Model(&types.Build{}).
 		Where("id = ?", buildID).
 		Update("duration", durationMs)
+	return result.Error
+}
+
+func UpdateBuildLogContent(database *gorm.DB, buildID uuid.UUID, content string, ctx context.Context) error {
+	result := database.WithContext(ctx).
+		Model(&types.Build{}).
+		Where("id = ?", buildID).
+		Update("log_content", content)
 	return result.Error
 }
 
