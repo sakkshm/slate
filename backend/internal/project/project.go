@@ -26,6 +26,18 @@ func GetProjectByID(projectID uuid.UUID, database *gorm.DB, ctx context.Context)
 	return &project, nil
 }
 
+func GetProjectByRepoID(database *gorm.DB, repoID int64, ctx context.Context) (*types.Project, error) {
+	var project types.Project
+	result := database.WithContext(ctx).Where("repo_id = ?", repoID).First(&project)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, result.Error
+	}
+	return &project, nil
+}
+
 func GetProjectsByOwner(ownerID int64, database *gorm.DB, ctx context.Context) ([]types.Project, error) {
 	var projects []types.Project
 	result := database.WithContext(ctx).Where("owner_id = ?", ownerID).Order("created_at DESC").Find(&projects)

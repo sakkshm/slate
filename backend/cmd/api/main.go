@@ -50,6 +50,9 @@ func main() {
 	r.Post(api.AuthCallbackRoute, apiEngine.HandleCallback)
 	r.Get(api.AuthInstallRoute, apiEngine.HandleInstallURL)
 
+	// Webhook Route (outside auth middleware, verified by HMAC)
+	r.Post(api.WebhookRoute, apiEngine.HandleGithubWebhook)
+
 	// Protected Routes
 	r.Group(func(r chi.Router) {
 		r.Use(apiEngine.AuthMiddleware)

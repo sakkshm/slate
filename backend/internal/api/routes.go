@@ -6,6 +6,8 @@ const (
 	AuthInstallRoute  = "/api/auth/github/install-url"
 	AuthLogoutRoute   = "/api/auth/github/logout"
 
+	WebhookRoute = "/api/webhooks/github"
+
 	UserRoute     = "/api/user"
 	UserRepoRoute = "/api/user/repos"
 

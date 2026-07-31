@@ -26,3 +26,20 @@ type UpdateProjectRequest struct {
 	BuildCmd   *string `json:"build_cmd,omitempty"`
 	OutDir     *string `json:"out_dir,omitempty"`
 }
+
+type GithubPushEvent struct {
+	Ref        string            `json:"ref"`
+	After      string            `json:"after"`
+	Repository GithubRepo        `json:"repository"`
+	HeadCommit *GithubHeadCommit `json:"head_commit,omitempty"`
+}
+
+type GithubRepo struct {
+	ID       int64  `json:"id"`
+	FullName string `json:"full_name"`
+}
+
+type GithubHeadCommit struct {
+	ID      string `json:"id"`
+	Message string `json:"message"`
+}

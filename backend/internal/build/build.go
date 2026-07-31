@@ -49,6 +49,21 @@ func GetBuildByID(database *gorm.DB, buildID uuid.UUID, ctx context.Context) (*t
 
 }
 
+func GetBuildByProjectAndCommit(database *gorm.DB, projectID uuid.UUID, commitSHA string, ctx context.Context) (*types.Build, error) {
+	var build types.Build
+
+	result := database.WithContext(ctx).
+		Where("project_id = ? AND commit_sha = ?", projectID, commitSHA).
+		First(&build)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, result.Error
+	}
+	return &build, nil
+}
+
 func UpdateBuildStatus(database *gorm.DB, buildID uuid.UUID, status types.BuildEvents, ctx context.Context) error {
 	result := database.WithContext(ctx).
 		Model(&types.Build{}).
