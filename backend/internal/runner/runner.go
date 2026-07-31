@@ -1,7 +1,6 @@
 package runner
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -15,16 +14,21 @@ import (
 )
 
 type BuildRequest struct {
-	ID                      string
+	ID string
+
 	RepoURL                 string
 	InstallationAccessToken string
 	CommitSHA               string
-	RootDir                 string
-	InstallCmd              string
-	BuildCmd                string
-	OutDir                  string
-	Env                     []string
-	StagingDir              string
+
+	InstallCmd string
+	BuildCmd   string
+
+	RootDir    string
+	OutDir     string
+	StagingDir string
+
+	Env     []string
+	LogSink func(line string)
 }
 
 func RunBuild(ctx context.Context, cli *client.Client, req BuildRequest) (string, int64, string, error) {
@@ -108,15 +112,22 @@ func RunBuild(ctx context.Context, cli *client.Client, req BuildRequest) (string
 		return "", 0, "", fmt.Errorf("log stream connection rejected: %w", err)
 	}
 
-	var logBuffer bytes.Buffer
+	lw := lineWriter{sink: req.LogSink}
 	logErrCh := make(chan error, 1)
 
 	go func() {
 		defer logStream.Close()
-		_, demuxErr := stdcopy.StdCopy(&logBuffer, &logBuffer, logStream)
+		_, demuxErr := stdcopy.StdCopy(&lw, &lw, logStream)
+
+		if lw.sink != nil && len(lw.pending) > 0 {
+			lw.sink(string(lw.pending))
+			lw.pending = lw.pending[:0]
+		}
+		
 		if demuxErr == io.EOF {
 			demuxErr = nil
 		}
+		
 		logErrCh <- demuxErr
 	}()
 
@@ -125,7 +136,7 @@ func RunBuild(ctx context.Context, cli *client.Client, req BuildRequest) (string
 	case err := <-errCh:
 		if err != nil {
 			safeCleanup(cli, containerID)
-			return "", 0, logBuffer.String(), fmt.Errorf("runtime waiting error: %w", err)
+			return "", 0, lw.buf.String(), fmt.Errorf("runtime waiting error: %w", err)
 		}
 
 	case status := <-statusCh:
@@ -133,14 +144,14 @@ func RunBuild(ctx context.Context, cli *client.Client, req BuildRequest) (string
 		case <-logErrCh:
 		case <-time.After(1 * time.Second):
 		}
-		return containerID, status.StatusCode, logBuffer.String(), nil
+		return containerID, status.StatusCode, lw.buf.String(), nil
 
 	case <-ctx.Done():
 		safeCleanup(cli, containerID)
-		return containerID, -1, logBuffer.String() + "\n[SYSTEM ERROR]: Execution context timeout exceeded.", ctx.Err()
+		return containerID, -1, lw.buf.String() + "\n[SYSTEM ERROR]: Execution context timeout exceeded.", ctx.Err()
 	}
 
-	return containerID, -1, logBuffer.String(), errors.New("unexpected runtime end state reached")
+	return containerID, -1, lw.buf.String(), errors.New("unexpected runtime end state reached")
 }
 
 func safeCleanup(cli *client.Client, containerID string) {

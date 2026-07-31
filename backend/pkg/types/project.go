@@ -40,6 +40,7 @@ type Build struct {
 	Duration  int64       `json:"duration"`
 
 	LogLocation   string `json:"log_location"`
+	LogContent    string `json:"log_content" gorm:"type:text"`
 	AssetLocation string `json:"asset_location"`
 
 	CreatedAt time.Time `json:"created_at"`
