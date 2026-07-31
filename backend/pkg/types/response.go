@@ -38,3 +38,8 @@ type ListBuildsResponse struct {
 	Builds []Build `json:"builds"`
 	Total  int64   `json:"total"`
 }
+
+type CancelBuildResponse struct {
+	BuildID string `json:"build_id"`
+	Status  string `json:"status"`
+}

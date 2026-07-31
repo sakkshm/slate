@@ -79,6 +79,8 @@ func main() {
 		r.Post(api.BuildsRoute, apiEngine.HandleTriggerBuild)
 		r.Get(api.BuildsRoute, apiEngine.HandleListBuilds)
 		r.Get(api.BuildByIDRoute, apiEngine.HandleGetBuild)
+		r.Get(api.BuildLogsRoute, apiEngine.HandleBuildLogs)
+		r.Post(api.CancelBuildRoute, apiEngine.HandleCancelBuild)
 	})
 
 	port := os.Getenv("PORT")

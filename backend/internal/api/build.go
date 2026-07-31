@@ -100,6 +100,7 @@ func (e *APIEngine) HandleTriggerBuild(w http.ResponseWriter, r *http.Request) {
 		ProjectID:               projectID.String(),
 		BuildID:                 buildID.String(),
 		RepoURL:                 proj.RepoURL,
+		RepoName:                proj.RepoName,
 		InstallationAccessToken: installToken,
 		CommitSHA:               lastCommit.SHA,
 		CommitMsg:               lastCommit.Commit.Message,
@@ -210,4 +211,66 @@ func (e *APIEngine) HandleGetBuild(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(b)
+}
+
+func (e *APIEngine) HandleCancelBuild(w http.ResponseWriter, r *http.Request) {
+	userID, ok := GetUserID(r.Context())
+	if !ok {
+		utils.WriteHTTPError(w, http.StatusUnauthorized, "BAD_REQ", "User ID not found")
+		return
+	}
+
+	projectID, err := uuid.Parse(chi.URLParam(r, "projectID"))
+	if err != nil {
+		utils.WriteHTTPError(w, http.StatusBadRequest, "BAD_REQ", "Invalid project ID")
+		return
+	}
+
+	proj, err := project.GetProjectByID(projectID, e.clients.DB, r.Context())
+	if err != nil || proj == nil {
+		utils.WriteHTTPError(w, http.StatusNotFound, "BAD_REQ", "Project not found")
+		return
+	}
+	if proj.OwnerID != userID {
+		utils.WriteHTTPError(w, http.StatusNotFound, "BAD_REQ", "Project not owned by current user")
+		return
+	}
+
+	buildID, err := uuid.Parse(chi.URLParam(r, "buildID"))
+	if err != nil {
+		utils.WriteHTTPError(w, http.StatusBadRequest, "BAD_REQ", "Invalid build ID")
+		return
+	}
+
+	b, err := buildpkg.GetBuildByID(e.clients.DB, buildID, r.Context())
+	if err != nil {
+		utils.WriteHTTPError(w, http.StatusInternalServerError, "DB_ERR", "Failed to fetch build")
+		return
+	}
+	if b == nil || b.ProjectID != projectID {
+		utils.WriteHTTPError(w, http.StatusNotFound, "BAD_REQ", "Build not found")
+		return
+	}
+
+	switch b.Status {
+	case types.StatusQueued:
+		if err := buildpkg.UpdateBuildStatus(e.clients.DB, buildID, types.StatusCancelled, r.Context()); err != nil {
+			utils.WriteHTTPError(w, http.StatusInternalServerError, "DB_ERR", "Failed to cancel build")
+			return
+		}
+	case types.StatusBuilding:
+		if err := queue.PublishCancel(r.Context(), e.clients.Redis, buildID.String()); err != nil {
+			utils.WriteHTTPError(w, http.StatusInternalServerError, "CANCEL_ERR", "Failed to request build cancellation")
+			return
+		}
+	default:
+		utils.WriteHTTPError(w, http.StatusConflict, "CONFLICT", "Build cannot be cancelled")
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(types.CancelBuildResponse{
+		BuildID: buildID.String(),
+		Status:  string(types.StatusCancelled),
+	})
 }
