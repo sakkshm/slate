@@ -1,6 +1,7 @@
 package github
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -84,7 +85,7 @@ func GetRepoContents(userInstallAccessToken string, repoOwner string, repoName s
 }
 
 func GetRepoLastCommit(userInstallAccessToken string, repoOwner string, repoName string, branchName string, ctx context.Context) (types.GithubRepoLastCommit, error) {
-	
+
 	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/commits/%s?per_page=1", repoOwner, repoName, branchName)
 
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -116,4 +117,43 @@ func GetRepoLastCommit(userInstallAccessToken string, repoOwner string, repoName
 	}
 
 	return apiResponse, nil
+}
+
+func CreateCommitStatus(userInstallAccessToken, repoOwner, repoName, commitSHA, state, description, contextName, targetURL string, ctx context.Context) error {
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/statuses/%s", repoOwner, repoName, commitSHA)
+
+	payload := types.GithubStatusPayload{
+		State:       state,
+		TargetURL:   targetURL,
+		Description: description,
+		Context:     contextName,
+	}
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to generate GitHub status update payload: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to status update request payload: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+userInstallAccessToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := (&http.Client{Timeout: 12 * time.Second}).Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to reach GitHub API: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("github statuses endpoint returned unexpected status: %d", resp.StatusCode)
+	}
+	return nil
 }

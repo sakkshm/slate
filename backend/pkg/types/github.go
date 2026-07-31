@@ -33,3 +33,10 @@ type GithubRepoLastCommit struct {
 		Message string `json:"message"`
 	} `json:"commit"`
 }
+
+type GithubStatusPayload struct {
+	State string `json:"state"`
+	TargetURL string `json:"target_url,omitempty"`
+	Description string `json:"description,omitempty"`
+	Context string `json:"context,omitempty"`
+}
