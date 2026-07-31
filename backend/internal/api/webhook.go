@@ -123,6 +123,7 @@ func (e *APIEngine) HandleGithubWebhook(w http.ResponseWriter, r *http.Request) 
 		ProjectID:               proj.ID.String(),
 		BuildID:                 buildID.String(),
 		RepoURL:                 proj.RepoURL,
+		RepoName:                proj.RepoName,
 		InstallationAccessToken: installToken,
 		CommitSHA:               event.After,
 		CommitMsg:               commitMsg,

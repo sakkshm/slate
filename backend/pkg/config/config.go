@@ -6,16 +6,18 @@ import (
 )
 
 type Config struct {
-	Environment         string
-	DatabaseURL         string
+	Environment   string
+	DatabaseURL   string
+	AppURL        string
+	EncryptionKey string
+	JWTSecret     string
+
 	GithubClientID      string
 	GithubClientSecret  string
 	GithubAppSlug       string
 	GithubAppID         string
 	GithubPrivateKey    []byte
 	GithubWebhookSecret string
-	EncryptionKey       string
-	JWTSecret           string
 
 	RedisAddr     string
 	RedisPassword string
@@ -37,16 +39,18 @@ func LoadConfig() *Config {
 	privateKey := loadPEMFile(pemFilePath)
 
 	cfg := &Config{
-		Environment:         getRequiredEnv("APP_ENV"),
-		DatabaseURL:         getRequiredEnv("DATABASE_URL"),
+		Environment:   getRequiredEnv("APP_ENV"),
+		DatabaseURL:   getRequiredEnv("DATABASE_URL"),
+		AppURL:        getEnvWithDefault("APP_URL", "http://localhost:5173"),
+		EncryptionKey: getRequiredEnv("ENCRYPTION_KEY"),
+		JWTSecret:     getRequiredEnv("JWT_SECRET"),
+
 		GithubClientID:      getRequiredEnv("GITHUB_CLIENT_ID"),
 		GithubClientSecret:  getRequiredEnv("GITHUB_CLIENT_SECRET"),
 		GithubAppSlug:       getRequiredEnv("GITHUB_APP_SLUG"),
 		GithubAppID:         getRequiredEnv("GITHUB_APP_ID"),
 		GithubWebhookSecret: getRequiredEnv("GITHUB_WEBHOOK_SECRET"),
 		GithubPrivateKey:    privateKey,
-		EncryptionKey:       getRequiredEnv("ENCRYPTION_KEY"),
-		JWTSecret:           getRequiredEnv("JWT_SECRET"),
 
 		RedisAddr:     getEnvWithDefault("REDIS_ADDR", "redis:6379"),
 		RedisPassword: getEnvWithDefault("REDIS_PASSWORD", ""),

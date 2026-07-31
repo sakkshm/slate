@@ -13,6 +13,7 @@ const (
 type BuildEvent struct {
 	ProjectID               string   `json:"project_id"`
 	BuildID                 string   `json:"build_id"`
+	RepoName                string   `json:"repo_name"`
 	RepoURL                 string   `json:"repo_url"`
 	InstallationAccessToken string   `json:"installation_access_token"`
 	CommitSHA               string   `json:"commit_sha"`
