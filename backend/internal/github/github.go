@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"slate-backend/pkg/types"
 	"time"
@@ -151,9 +152,44 @@ func CreateCommitStatus(userInstallAccessToken, repoOwner, repoName, commitSHA, 
 		return fmt.Errorf("failed to reach GitHub API: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("github statuses endpoint returned unexpected status: %d", resp.StatusCode)
 	}
 	return nil
+}
+
+func GetRepoFileContent(userInstallAccessToken string, repoOwner string, repoName string, path string, ref string, ctx context.Context) ([]byte, error) {
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", repoOwner, repoName, path)
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create repo contents request payload: %w", err)
+	}
+
+	q := req.URL.Query()
+	if ref != "" {
+		q.Set("ref", ref)
+	}
+	req.URL.RawQuery = q.Encode()
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", userInstallAccessToken))
+	req.Header.Set("Accept", "application/vnd.github.raw")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	client := &http.Client{Timeout: 12 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reach GitHub API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub contents endpoint returned unexpected status: %d", resp.StatusCode)
+	}
+
+	return io.ReadAll(resp.Body)
 }

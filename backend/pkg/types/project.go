@@ -18,10 +18,11 @@ type Project struct {
 	RepoName   string `json:"repo_name" gorm:"not null"`
 	ProdBranch string `json:"prod_branch" gorm:"not null"`
 
-	Framework string `json:"framework"`
-	RootDir   string `json:"root_dir"`
-	BuildCmd  string `json:"build_cmd"`
-	OutDir    string `json:"out_dir"`
+	Framework  string `json:"framework"`
+	RootDir    string `json:"root_dir"`
+	InstallCmd string `json:"install_cmd"`
+	BuildCmd   string `json:"build_cmd"`
+	OutDir     string `json:"out_dir"`
 
 	ActiveBuildID *uuid.UUID `json:"active_build_id,omitempty"`
 	ActiveBuild   *Build     `json:"active_build,omitempty"`

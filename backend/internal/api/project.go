@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"slate-backend/internal/auth"
+	"slate-backend/internal/framework"
 	githubclient "slate-backend/internal/github"
 	"slate-backend/internal/project"
 	"slate-backend/internal/user"
@@ -58,6 +59,23 @@ func (e *APIEngine) HandleCreateProject(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	installCmd, buildCmd, outDir := req.InstallCmd, req.BuildCmd, req.OutDir
+	detectedFramework := req.Framework
+
+	if detectedFramework == "" {
+		packagePath := "package.json"
+		if req.RootDir != "" {
+			packagePath = strings.TrimPrefix(req.RootDir, "/") + "/package.json"
+		}
+		if content, err := githubclient.GetRepoFileContent(installToken, repoOwner, repoName, packagePath, req.ProdBranch, r.Context()); err == nil {
+			if fw, _ := framework.DetectFromPackageJSON(content); fw != "" {
+				detectedFramework = fw
+			}
+		}
+	}
+
+	cfg := framework.Resolve(detectedFramework, installCmd, buildCmd, outDir)
+
 	branches, err := githubclient.GetRepoBranches(installToken, repoOwner, repoName, r.Context())
 	if err != nil {
 		utils.WriteHTTPError(w, http.StatusInternalServerError, "GH_BRANCHES_ERR", "Unable to fetch repository branches")
@@ -101,10 +119,11 @@ func (e *APIEngine) HandleCreateProject(w http.ResponseWriter, r *http.Request) 
 		RepoURL:    req.RepoURL,
 		RepoName:   req.RepoName,
 		ProdBranch: req.ProdBranch,
-		Framework:  req.Framework,
+		Framework:  detectedFramework,
 		RootDir:    req.RootDir,
-		BuildCmd:   req.BuildCmd,
-		OutDir:     req.OutDir,
+		InstallCmd: cfg.InstallCmd,
+		BuildCmd:   cfg.BuildCmd,
+		OutDir:     cfg.OutDir,
 	}
 
 	if err := project.CreateProject(e.clients.DB, proj, r.Context()); err != nil {
@@ -195,6 +214,9 @@ func (e *APIEngine) HandleUpdateProject(w http.ResponseWriter, r *http.Request) 
 	}
 	if req.RootDir != nil {
 		updates["root_dir"] = *req.RootDir
+	}
+	if req.InstallCmd != nil {
+		updates["install_cmd"] = *req.InstallCmd
 	}
 	if req.BuildCmd != nil {
 		updates["build_cmd"] = *req.BuildCmd

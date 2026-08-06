@@ -7,6 +7,7 @@ import (
 	"slate-backend/internal/auth"
 	buildpkg "slate-backend/internal/build"
 	"slate-backend/internal/envvar"
+	"slate-backend/internal/framework"
 	githubclient "slate-backend/internal/github"
 	"slate-backend/internal/project"
 	"slate-backend/internal/queue"
@@ -95,6 +96,8 @@ func (e *APIEngine) HandleTriggerBuild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cfg := framework.Resolve(proj.Framework, proj.InstallCmd, proj.BuildCmd, proj.OutDir)
+
 	_ = project.UpdateProject(e.clients.DB, projectID, userID, map[string]interface{}{"active_build_id": buildID}, r.Context())
 
 	event := types.BuildEvent{
@@ -106,9 +109,9 @@ func (e *APIEngine) HandleTriggerBuild(w http.ResponseWriter, r *http.Request) {
 		CommitSHA:               lastCommit.SHA,
 		CommitMsg:               lastCommit.Commit.Message,
 		RootDir:                 proj.RootDir,
-		InstallCmd:              "",
-		BuildCmd:                proj.BuildCmd,
-		OutDir:                  proj.OutDir,
+		InstallCmd:              cfg.InstallCmd,
+		BuildCmd:                cfg.BuildCmd,
+		OutDir:                  cfg.OutDir,
 	}
 
 	envVars, envErr := envvar.ResolveAll(e.clients.DB, []byte(e.config.EncryptionKey), projectID, r.Context())

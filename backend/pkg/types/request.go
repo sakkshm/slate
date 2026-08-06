@@ -14,6 +14,7 @@ type CreateProjectRequest struct {
 	ProdBranch string `json:"prod_branch"`
 	Framework  string `json:"framework"`
 	RootDir    string `json:"root_dir"`
+	InstallCmd string `json:"install_cmd"`
 	BuildCmd   string `json:"build_cmd"`
 	OutDir     string `json:"out_dir"`
 }
@@ -23,6 +24,7 @@ type UpdateProjectRequest struct {
 	ProdBranch *string `json:"prod_branch,omitempty"`
 	Framework  *string `json:"framework,omitempty"`
 	RootDir    *string `json:"root_dir,omitempty"`
+	InstallCmd *string `json:"install_cmd,omitempty"`
 	BuildCmd   *string `json:"build_cmd,omitempty"`
 	OutDir     *string `json:"out_dir,omitempty"`
 }

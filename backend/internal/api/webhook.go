@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"slate-backend/internal/auth"
 	buildpkg "slate-backend/internal/build"
+	"slate-backend/internal/framework"
 	"slate-backend/internal/project"
 	"slate-backend/internal/queue"
 	"slate-backend/internal/user"
@@ -117,6 +118,8 @@ func (e *APIEngine) HandleGithubWebhook(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	cfg := framework.Resolve(proj.Framework, proj.InstallCmd, proj.BuildCmd, proj.OutDir)
+
 	_ = project.UpdateProject(e.clients.DB, proj.ID, proj.OwnerID, map[string]interface{}{"active_build_id": buildID}, r.Context())
 
 	buildEvent := types.BuildEvent{
@@ -128,9 +131,9 @@ func (e *APIEngine) HandleGithubWebhook(w http.ResponseWriter, r *http.Request) 
 		CommitSHA:               event.After,
 		CommitMsg:               commitMsg,
 		RootDir:                 proj.RootDir,
-		InstallCmd:              "",
-		BuildCmd:                proj.BuildCmd,
-		OutDir:                  proj.OutDir,
+		InstallCmd:              cfg.InstallCmd,
+		BuildCmd:                cfg.BuildCmd,
+		OutDir:                  cfg.OutDir,
 	}
 
 	if _, err := queue.PublishBuildRequest(r.Context(), e.clients.Redis, buildEvent); err != nil {
