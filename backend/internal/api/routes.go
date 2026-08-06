@@ -21,4 +21,7 @@ const (
 	BuildByIDRoute   = "/api/projects/{projectID}/builds/{buildID}"
 	BuildLogsRoute   = "/api/projects/{projectID}/builds/{buildID}/logs"
 	CancelBuildRoute = "/api/projects/{projectID}/builds/{buildID}/cancel"
+
+	ProjectEnvVarsRoute     = "/api/projects/{projectID}/env-vars"
+	ProjectEnvVarByKeyRoute = "/api/projects/{projectID}/env-vars/{key}"
 )

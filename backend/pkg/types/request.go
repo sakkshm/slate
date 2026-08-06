@@ -43,3 +43,8 @@ type GithubHeadCommit struct {
 	ID      string `json:"id"`
 	Message string `json:"message"`
 }
+
+type UpsertEnvVarRequest struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slate-backend/internal/auth"
 	buildpkg "slate-backend/internal/build"
+	"slate-backend/internal/envvar"
 	githubclient "slate-backend/internal/github"
 	"slate-backend/internal/project"
 	"slate-backend/internal/queue"
@@ -108,6 +109,13 @@ func (e *APIEngine) HandleTriggerBuild(w http.ResponseWriter, r *http.Request) {
 		InstallCmd:              "",
 		BuildCmd:                proj.BuildCmd,
 		OutDir:                  proj.OutDir,
+	}
+
+	envVars, envErr := envvar.ResolveAll(e.clients.DB, []byte(e.config.EncryptionKey), projectID, r.Context())
+	if envErr != nil {
+		fmt.Printf("[API] Failed to resolve env vars: %v\n", envErr)
+	} else {
+		event.Env = envVars
 	}
 
 	if _, err := queue.PublishBuildRequest(r.Context(), e.clients.Redis, event); err != nil {

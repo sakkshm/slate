@@ -43,3 +43,9 @@ type CancelBuildResponse struct {
 	BuildID string `json:"build_id"`
 	Status  string `json:"status"`
 }
+
+type EnvVarResponse struct {
+	Key       string    `json:"key"`
+	Value     string    `json:"value"`
+	UpdatedAt time.Time `json:"updated_at"`
+}

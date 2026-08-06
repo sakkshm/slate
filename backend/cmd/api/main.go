@@ -56,14 +56,14 @@ func main() {
 	// Protected Routes
 	r.Group(func(r chi.Router) {
 		r.Use(apiEngine.AuthMiddleware)
-		
+
 		// Auth
 		r.Post(api.AuthLogoutRoute, apiEngine.HandleAuthLogout)
-		
+
 		// User
 		r.Get(api.UserRoute, apiEngine.HandleGetUserProfile)
 		r.Get(api.UserRepoRoute, apiEngine.HandleGetUserRepos)
-		
+
 		// Repo
 		r.Get(api.RepoBranchesRoute, apiEngine.HandleGetRepoBranches)
 		r.Get(api.RepoContentsRoute, apiEngine.HandleGetRepoContents)
@@ -81,6 +81,11 @@ func main() {
 		r.Get(api.BuildByIDRoute, apiEngine.HandleGetBuild)
 		r.Get(api.BuildLogsRoute, apiEngine.HandleBuildLogs)
 		r.Post(api.CancelBuildRoute, apiEngine.HandleCancelBuild)
+
+		// Env vars
+		r.Get(api.ProjectEnvVarsRoute, apiEngine.HandleListEnvVars)
+		r.Put(api.ProjectEnvVarsRoute, apiEngine.HandleUpsertEnvVar)
+		r.Delete(api.ProjectEnvVarByKeyRoute, apiEngine.HandleDeleteEnvVar)
 	})
 
 	port := os.Getenv("PORT")

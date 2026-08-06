@@ -17,6 +17,7 @@ func New(dbURL string) (*gorm.DB, error) {
 		&types.User{},
 		&types.Project{},
 		&types.Build{},
+		&types.ProjectEnvVar{},
 	)
 	if err != nil {
 		return nil, err
