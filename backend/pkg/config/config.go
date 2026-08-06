@@ -6,11 +6,12 @@ import (
 )
 
 type Config struct {
-	Environment   string
-	DatabaseURL   string
-	AppURL        string
-	EncryptionKey string
-	JWTSecret     string
+	Environment    string
+	DatabaseURL    string
+	AppURL         string
+	SiteBaseDomain string
+	EncryptionKey  string
+	JWTSecret      string
 
 	GithubClientID      string
 	GithubClientSecret  string
@@ -39,11 +40,12 @@ func LoadConfig() *Config {
 	privateKey := loadPEMFile(pemFilePath)
 
 	cfg := &Config{
-		Environment:   getRequiredEnv("APP_ENV"),
-		DatabaseURL:   getRequiredEnv("DATABASE_URL"),
-		AppURL:        getEnvWithDefault("APP_URL", "http://localhost:5173"),
-		EncryptionKey: getRequiredEnv("ENCRYPTION_KEY"),
-		JWTSecret:     getRequiredEnv("JWT_SECRET"),
+		Environment:    getRequiredEnv("APP_ENV"),
+		DatabaseURL:    getRequiredEnv("DATABASE_URL"),
+		AppURL:         getEnvWithDefault("APP_URL", "http://localhost:5173"),
+		EncryptionKey:  getRequiredEnv("ENCRYPTION_KEY"),
+		JWTSecret:      getRequiredEnv("JWT_SECRET"),
+		SiteBaseDomain: getEnvWithDefault("SITE_BASE_DOMAIN", "slate.sakkshm.me"),
 
 		GithubClientID:      getRequiredEnv("GITHUB_CLIENT_ID"),
 		GithubClientSecret:  getRequiredEnv("GITHUB_CLIENT_SECRET"),

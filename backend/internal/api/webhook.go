@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"slate-backend/internal/auth"
 	buildpkg "slate-backend/internal/build"
+	"slate-backend/internal/envvar"
 	"slate-backend/internal/framework"
 	"slate-backend/internal/project"
 	"slate-backend/internal/queue"
@@ -134,6 +135,13 @@ func (e *APIEngine) HandleGithubWebhook(w http.ResponseWriter, r *http.Request) 
 		InstallCmd:              cfg.InstallCmd,
 		BuildCmd:                cfg.BuildCmd,
 		OutDir:                  cfg.OutDir,
+	}
+
+	envVars, envErr := envvar.ResolveAll(e.clients.DB, []byte(e.config.EncryptionKey), proj.ID, r.Context())
+	if envErr != nil {
+		log.Printf("[WEBHOOK] Failed to resolve env vars: %v", envErr)
+	} else {
+		buildEvent.Env = envVars
 	}
 
 	if _, err := queue.PublishBuildRequest(r.Context(), e.clients.Redis, buildEvent); err != nil {

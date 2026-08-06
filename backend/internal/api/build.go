@@ -220,8 +220,16 @@ func (e *APIEngine) HandleGetBuild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	deploymentURL := fmt.Sprintf("https://%s.%s", proj.Slug, e.config.SiteBaseDomain)
+	assetURL := fmt.Sprintf("http://%s/%s/projects/%s/builds/%s.tar.gz",
+		e.config.MinIOEndpoint, e.config.MinIOBucket, projectID, b.AssetLocation)
+
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(b)
+	json.NewEncoder(w).Encode(types.BuildDetailResponse{
+		Build:         *b,
+		DeploymentURL: deploymentURL,
+		AssetURL:      assetURL,
+	})
 }
 
 func (e *APIEngine) HandleCancelBuild(w http.ResponseWriter, r *http.Request) {

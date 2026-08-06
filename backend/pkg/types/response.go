@@ -39,6 +39,12 @@ type ListBuildsResponse struct {
 	Total  int64   `json:"total"`
 }
 
+type BuildDetailResponse struct {
+	Build
+	DeploymentURL string `json:"deployment_url"`
+	AssetURL      string `json:"asset_url"`
+}
+
 type CancelBuildResponse struct {
 	BuildID string `json:"build_id"`
 	Status  string `json:"status"`
