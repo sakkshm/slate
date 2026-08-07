@@ -21,6 +21,19 @@ import (
 	"github.com/google/uuid"
 )
 
+func parseRepoOwnerName(repoURL string) (owner, repo string, ok bool) {
+	trimmed := strings.TrimSuffix(strings.TrimSpace(repoURL), "/")
+	if idx := strings.Index(trimmed, "://"); idx != -1 {
+		trimmed = trimmed[idx+3:]
+	}
+	trimmed = strings.TrimSuffix(trimmed, ".git")
+	parts := strings.Split(trimmed, "/")
+	if len(parts) < 2 {
+		return "", "", false
+	}
+	return parts[len(parts)-2], parts[len(parts)-1], true
+}
+
 func (e *APIEngine) HandleTriggerBuild(w http.ResponseWriter, r *http.Request) {
 	userID, ok := GetUserID(r.Context())
 	if !ok {
@@ -70,13 +83,13 @@ func (e *APIEngine) HandleTriggerBuild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parts := strings.SplitN(proj.RepoName, "/", 2)
-	if len(parts) != 2 {
+	repoOwner, repoName, ok := parseRepoOwnerName(proj.RepoURL)
+	if !ok {
 		utils.WriteHTTPError(w, http.StatusInternalServerError, "BAD_REQ", "Invalid repo name format")
 		return
 	}
 
-	lastCommit, err := githubclient.GetRepoLastCommit(installToken, parts[0], parts[1], proj.ProdBranch, r.Context())
+	lastCommit, err := githubclient.GetRepoLastCommit(installToken, repoOwner, repoName, proj.ProdBranch, r.Context())
 	if err != nil {
 		utils.WriteHTTPError(w, http.StatusInternalServerError, "GH_COMMIT_ERR", "Unable to fetch latest commit")
 		return

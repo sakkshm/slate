@@ -1,23 +1,24 @@
 import { IconBrandGithub } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
-import { apiClient } from "@/shared/api";
+import { apiClient, type APIError } from "@/shared/api";
 import { toast } from "sonner";
 
 export function GithubButton() {
     const handleConnectGitHub = async () => {
         try {
-            const data = await apiClient.get<any>('/api/auth/github/initiate-login')
+            const data = await apiClient.get<{ url: string }>('/api/auth/github/initiate-login')
             
             // Redirect user to GitHub Auth
             window.location.href = data.url;
 
-        } catch(err: any) {
-            console.error('Failed Status:', err.status);  
-            console.error('Error Code:', err.code);      
-            console.error('Message:', err.message); 
+        } catch (err) {
+            const error = err as APIError;
+            console.error('Failed Status:', error.status);  
+            console.error('Error Code:', error.code);      
+            console.error('Message:', error.message); 
             
-            toast.error(`Unable to redirect to provider: ${err.code}`, {
-                description: `${err.message} (Status: ${err.status})`,
+            toast.error(`Unable to redirect to provider: ${error.code}`, {
+                description: `${error.message} (Status: ${error.status})`,
             })
         }
     };
