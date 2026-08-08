@@ -82,6 +82,7 @@ func (e *APIEngine) HandleBuildLogs(w http.ResponseWriter, r *http.Request) {
 		}
 		fmt.Fprintf(w, "event: done\n\n")
 		flusher.Flush()
+		<-r.Context().Done()
 	}
 
 	if isTerminal(b.Status) {
@@ -120,6 +121,7 @@ func (e *APIEngine) HandleBuildLogs(w http.ResponseWriter, r *http.Request) {
 			if msg.Channel == queue.DoneChanKey(bid) {
 				fmt.Fprintf(w, "event: done\n\n")
 				flusher.Flush()
+				<-r.Context().Done()
 				return
 			}
 			if skip > 0 {

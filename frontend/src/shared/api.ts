@@ -80,20 +80,29 @@ export function subscribeSSE(endpoint: string, handlers: SSEHandlers): () => voi
 
   const source = new EventSource(url, { withCredentials: true });
 
+  let completed = false;
+
   source.onmessage = (event) => {
+    if (completed) return;
     handlers.onLine(event.data as string);
   };
 
   source.addEventListener('done', () => {
+    if (completed) return;
+    completed = true;
     handlers.onDone?.();
     source.close();
   });
 
   source.onerror = () => {
+    if (completed) return;
     handlers.onError?.();
   };
 
   return () => {
-    source.close();
+    if (!completed) {
+      completed = true;
+      source.close();
+    }
   };
 }
