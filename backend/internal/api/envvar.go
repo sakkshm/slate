@@ -98,7 +98,7 @@ func (e *APIEngine) HandleUpsertEnvVar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (e *APIEngine) HandleDeleteEnvVar(w http.ResponseWriter, r *http.Request) {

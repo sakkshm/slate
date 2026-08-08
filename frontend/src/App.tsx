@@ -7,12 +7,18 @@ import NotFound from "./pages/NotFound"
 import ProjectsPage from "./pages/ProjectsPage"
 import NewProjectPage from "./pages/NewProjectPage"
 import ProjectOverviewPage from "./pages/ProjectOverviewPage"
+import ProjectSettingsPage from "./pages/ProjectSettingsPage"
 import DeploymentsPage from "./pages/DeploymentsPage"
 import BuildDetailPage from "./pages/BuildDetailPage"
 
 function ProjectOverviewRoute() {
   const { projectID } = useParams()
   return <ProjectOverviewPage key={projectID} />
+}
+
+function ProjectSettingsRoute() {
+  const { projectID } = useParams()
+  return <ProjectSettingsPage key={projectID} />
 }
 
 function DeploymentsRoute() {
@@ -36,6 +42,7 @@ export default function App() {
           <Route index element={<ProjectsPage />} />
           <Route path="new" element={<NewProjectPage />} />
           <Route path=":projectID" element={<ProjectOverviewRoute />} />
+          <Route path=":projectID/settings" element={<ProjectSettingsRoute />} />
           <Route path=":projectID/deployments" element={<DeploymentsRoute />} />
           <Route
             path=":projectID/deployments/:buildID"

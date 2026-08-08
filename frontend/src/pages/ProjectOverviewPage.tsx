@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
-import { GitBranch, Rocket, ExternalLink, History, ArrowLeft } from "lucide-react"
+import { GitBranch, Rocket, ExternalLink, History, Settings, ArrowLeft } from "lucide-react"
 import { toast } from "sonner"
 
 import { apiClient, type APIError } from "@/shared/api"
@@ -147,6 +147,13 @@ function ProjectOverviewPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            render={<Link to={`/dashboard/${project.id}/settings`} />}
+          >
+            <Settings data-icon="inline-start" />
+            Settings
+          </Button>
           <Button
             variant="outline"
             render={<Link to={`/dashboard/${project.id}/deployments`} />}
