@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth"
 import { apiClient } from "@/shared/api"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { ThemeToggle } from "@/components/custom/ThemeToggle"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -90,8 +91,9 @@ export function DashboardLayout() {
   return (
     <div className="flex h-screen overflow-hidden">
       <aside className="flex w-60 shrink-0 flex-col border-r bg-sidebar">
-        <div className="flex h-14 items-center border-b px-3">
+        <div className="flex h-14 items-center justify-between border-b px-3">
           <Brand />
+          <ThemeToggle />
         </div>
         <nav className="flex flex-col gap-1 p-2">
           <Button

@@ -5,6 +5,21 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>frontend</title>
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("theme")
+          var systemDark = window.matchMedia(
+            "(prefers-color-scheme: dark)"
+          ).matches
+          var isDark = stored === "dark" || (!stored && systemDark)
+          if (isDark) {
+            document.documentElement.classList.add("dark")
+          }
+          document.documentElement.style.colorScheme = isDark ? "dark" : "light"
+        } catch (e) {}
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>
