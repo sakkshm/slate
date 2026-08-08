@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { apiClient, type APIError } from "@/shared/api"
 import { RepoSelector } from "@/components/custom/RepoSelector"
 import { BranchSelector } from "@/components/custom/BranchSelector"
+import { RootDirPicker } from "@/components/custom/RootDirPicker"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -175,35 +176,39 @@ function NewProjectPage() {
               Optional overrides. Leave blank to auto-detect the framework.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2">
-            <Field label="Root directory" hint="e.g. subdir or site">
-              <Input
+          <CardContent className="flex flex-col gap-4">
+            <Field label="Root directory" hint="Where your app lives. Defaults to the repository root.">
+              <RootDirPicker
+                key={`${repo?.full_name ?? "none"}-${branch}`}
+                fullName={repo?.full_name ?? ""}
+                branch={branch}
                 value={rootDir}
-                onChange={(e) => setRootDir(e.target.value)}
-                placeholder="auto-detected"
+                onChange={setRootDir}
               />
             </Field>
-            <Field label="Output directory">
-              <Input
-                value={outDir}
-                onChange={(e) => setOutDir(e.target.value)}
-                placeholder="auto-detected"
-              />
-            </Field>
-            <Field label="Install command">
-              <Input
-                value={installCmd}
-                onChange={(e) => setInstallCmd(e.target.value)}
-                placeholder="auto-detected"
-              />
-            </Field>
-            <Field label="Build command">
-              <Input
-                value={buildCmd}
-                onChange={(e) => setBuildCmd(e.target.value)}
-                placeholder="auto-detected"
-              />
-            </Field>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field label="Output directory">
+                <Input
+                  value={outDir}
+                  onChange={(e) => setOutDir(e.target.value)}
+                  placeholder="auto-detected"
+                />
+              </Field>
+              <Field label="Install command">
+                <Input
+                  value={installCmd}
+                  onChange={(e) => setInstallCmd(e.target.value)}
+                  placeholder="auto-detected"
+                />
+              </Field>
+              <Field label="Build command">
+                <Input
+                  value={buildCmd}
+                  onChange={(e) => setBuildCmd(e.target.value)}
+                  placeholder="auto-detected"
+                />
+              </Field>
+            </div>
           </CardContent>
         </Card>
 
