@@ -2,6 +2,8 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"slate-backend/internal/auth"
 	"slate-backend/internal/framework"
@@ -129,6 +131,14 @@ func (e *APIEngine) HandleCreateProject(w http.ResponseWriter, r *http.Request) 
 	if err := project.CreateProject(e.clients.DB, proj, r.Context()); err != nil {
 		utils.WriteHTTPError(w, http.StatusInternalServerError, "DB_ERR", "Failed to create project")
 		return
+	}
+
+	e.registerProjectWebhook(repoOwner, repoName, installToken, r.Context())
+
+	if buildID, err := e.enqueueBuild(r, proj, userProfile); err != nil {
+		fmt.Printf("[API] Failed to trigger initial build for project %s: %v\n", proj.ID, err)
+	} else {
+		fmt.Printf("[API] Initial build %s queued for project %s\n", buildID, proj.ID)
 	}
 
 	w.WriteHeader(http.StatusCreated)
@@ -259,6 +269,10 @@ func (e *APIEngine) HandleDeleteProject(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := project.DeleteProject(projectID, userID, e.clients.DB, r.Context()); err != nil {
+		if errors.Is(err, project.ErrProjectNotFound) {
+			utils.WriteHTTPError(w, http.StatusNotFound, "PRJ_NOT_FND", "Project not found")
+			return
+		}
 		utils.WriteHTTPError(w, http.StatusInternalServerError, "DB_ERR", "Failed to delete project")
 		return
 	}

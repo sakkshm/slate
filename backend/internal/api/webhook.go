@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -12,6 +13,7 @@ import (
 	buildpkg "slate-backend/internal/build"
 	"slate-backend/internal/envvar"
 	"slate-backend/internal/framework"
+	githubclient "slate-backend/internal/github"
 	"slate-backend/internal/project"
 	"slate-backend/internal/queue"
 	"slate-backend/internal/user"
@@ -150,6 +152,29 @@ func (e *APIEngine) HandleGithubWebhook(w http.ResponseWriter, r *http.Request) 
 
 	log.Printf("[WEBHOOK] Queued build %s for repo %s commit %s", buildID, event.Repository.FullName, event.After)
 	w.WriteHeader(http.StatusOK)
+}
+
+func (e *APIEngine) registerProjectWebhook(repoOwner, repoName, installToken string, ctx context.Context) {
+	webhookURL := e.config.AppURL + "/api/webhooks/github"
+
+	hooks, err := githubclient.ListRepoWebhooks(installToken, repoOwner, repoName, ctx)
+	if err != nil {
+		log.Printf("[API] Unable to check existing webhooks for %s/%s: %v", repoOwner, repoName, err)
+		return
+	}
+	for _, h := range hooks {
+		if h.Config.URL == webhookURL {
+			log.Printf("[API] Webhook already registered for %s/%s", repoOwner, repoName)
+			return
+		}
+	}
+
+	if err := githubclient.CreateRepoWebhook(installToken, repoOwner, repoName, webhookURL, e.config.GithubWebhookSecret, ctx); err != nil {
+		log.Printf("[API] Failed to register webhook for %s/%s: %v", repoOwner, repoName, err)
+		return
+	}
+
+	log.Printf("[API] Registered push webhook for %s/%s -> %s", repoOwner, repoName, webhookURL)
 }
 
 func verifyWebhookSignature(secret string, body []byte, signatureHeader string) bool {

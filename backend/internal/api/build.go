@@ -77,44 +77,54 @@ func (e *APIEngine) HandleTriggerBuild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	buildID, err := e.enqueueBuild(r, proj, usr)
+	if err != nil {
+		utils.WriteHTTPError(w, http.StatusInternalServerError, "BUILD_ERR", err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(types.TriggerBuildResponse{
+		BuildID: buildID.String(),
+		Status:  string(types.StatusQueued),
+	})
+}
+
+func (e *APIEngine) enqueueBuild(r *http.Request, proj *types.Project, usr *types.User) (uuid.UUID, error) {
 	installToken, err := auth.GetInstallationAccessToken(e.config, usr.GithubInstallationID, r.Context())
 	if err != nil {
-		utils.WriteHTTPError(w, http.StatusInternalServerError, "INST_TKN_ERR", "Unable to get installation access token")
-		return
+		return uuid.Nil, err
 	}
 
 	repoOwner, repoName, ok := parseRepoOwnerName(proj.RepoURL)
 	if !ok {
-		utils.WriteHTTPError(w, http.StatusInternalServerError, "BAD_REQ", "Invalid repo name format")
-		return
+		return uuid.Nil, fmt.Errorf("invalid repo name format")
 	}
 
 	lastCommit, err := githubclient.GetRepoLastCommit(installToken, repoOwner, repoName, proj.ProdBranch, r.Context())
 	if err != nil {
-		utils.WriteHTTPError(w, http.StatusInternalServerError, "GH_COMMIT_ERR", "Unable to fetch latest commit")
-		return
+		return uuid.Nil, err
 	}
 
 	buildID := uuid.New()
 	newBuild := &types.Build{
 		ID:        buildID,
-		ProjectID: projectID,
+		ProjectID: proj.ID,
 		CommitSHA: lastCommit.SHA,
 		CommitMsg: lastCommit.Commit.Message,
 		Status:    types.StatusQueued,
 	}
 
 	if err := buildpkg.CreateBuild(e.clients.DB, newBuild, r.Context()); err != nil {
-		utils.WriteHTTPError(w, http.StatusInternalServerError, "DB_ERR", "Failed to create build")
-		return
+		return uuid.Nil, err
 	}
 
 	cfg := framework.Resolve(proj.Framework, proj.InstallCmd, proj.BuildCmd, proj.OutDir)
 
-	_ = project.UpdateProject(e.clients.DB, projectID, userID, map[string]interface{}{"active_build_id": buildID}, r.Context())
+	_ = project.UpdateProject(e.clients.DB, proj.ID, proj.OwnerID, map[string]interface{}{"active_build_id": buildID}, r.Context())
 
 	event := types.BuildEvent{
-		ProjectID:               projectID.String(),
+		ProjectID:               proj.ID.String(),
 		BuildID:                 buildID.String(),
 		RepoURL:                 proj.RepoURL,
 		RepoName:                proj.RepoName,
@@ -127,7 +137,7 @@ func (e *APIEngine) HandleTriggerBuild(w http.ResponseWriter, r *http.Request) {
 		OutDir:                  cfg.OutDir,
 	}
 
-	envVars, envErr := envvar.ResolveAll(e.clients.DB, []byte(e.config.EncryptionKey), projectID, r.Context())
+	envVars, envErr := envvar.ResolveAll(e.clients.DB, []byte(e.config.EncryptionKey), proj.ID, r.Context())
 	if envErr != nil {
 		fmt.Printf("[API] Failed to resolve env vars: %v\n", envErr)
 	} else {
@@ -138,11 +148,7 @@ func (e *APIEngine) HandleTriggerBuild(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("[API] Failed to publish build event: %v\n", err)
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(types.TriggerBuildResponse{
-		BuildID: buildID.String(),
-		Status:  string(types.StatusQueued),
-	})
+	return buildID, nil
 }
 
 func (e *APIEngine) HandleListBuilds(w http.ResponseWriter, r *http.Request) {

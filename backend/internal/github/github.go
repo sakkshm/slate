@@ -193,3 +193,80 @@ func GetRepoFileContent(userInstallAccessToken string, repoOwner string, repoNam
 
 	return io.ReadAll(resp.Body)
 }
+
+func ListRepoWebhooks(userInstallAccessToken string, repoOwner string, repoName string, ctx context.Context) ([]types.GithubRepoWebhook, error) {
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/hooks", repoOwner, repoName)
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create repo webhooks request payload: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+userInstallAccessToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	resp, err := (&http.Client{Timeout: 12 * time.Second}).Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reach GitHub API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub hooks endpoint returned unexpected status: %d", resp.StatusCode)
+	}
+
+	var apiResponse []types.GithubRepoWebhook
+	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
+		return nil, fmt.Errorf("failed to decode GitHub webhooks response: %w", err)
+	}
+
+	return apiResponse, nil
+}
+
+func CreateRepoWebhook(userInstallAccessToken string, repoOwner string, repoName string, webhookURL string, secret string, ctx context.Context) error {
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/hooks", repoOwner, repoName)
+
+	payload := types.GithubWebhookPayload{
+		Name:   "web",
+		Active: true,
+		Events: []string{"push"},
+		Config: types.GithubHookConfig{
+			URL:         webhookURL,
+			ContentType: "json",
+			Secret:      secret,
+		},
+	}
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to generate GitHub webhook payload: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create repo webhook request payload: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+userInstallAccessToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := (&http.Client{Timeout: 12 * time.Second}).Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to reach GitHub API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("GitHub hooks endpoint returned unexpected status: %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
+}

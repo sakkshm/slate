@@ -40,3 +40,24 @@ type GithubStatusPayload struct {
 	Description string `json:"description,omitempty"`
 	Context string `json:"context,omitempty"`
 }
+
+type GithubHookConfig struct {
+	URL         string `json:"url"`
+	ContentType string `json:"content_type"`
+	Secret      string `json:"secret"`
+}
+
+type GithubWebhookPayload struct {
+	Name   string           `json:"name"`
+	Active bool             `json:"active"`
+	Events []string         `json:"events"`
+	Config GithubHookConfig `json:"config"`
+}
+
+type GithubRepoWebhook struct {
+	ID     int              `json:"id"`
+	Name   string           `json:"name"`
+	Active bool             `json:"active"`
+	Events []string         `json:"events"`
+	Config GithubHookConfig `json:"config"`
+}

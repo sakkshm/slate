@@ -9,6 +9,8 @@ import (
 	"gorm.io/gorm"
 )
 
+var ErrProjectNotFound = errors.New("project not found or not owned by user")
+
 func CreateProject(database *gorm.DB, project *types.Project, ctx context.Context) error {
 	result := database.WithContext(ctx).Create(project)
 	return result.Error
@@ -56,20 +58,26 @@ func UpdateProject(database *gorm.DB, projectID uuid.UUID, ownerID int64, update
 		return result.Error
 	}
 	if result.RowsAffected == 0 {
-		return errors.New("project not found or not owned by user")
+		return ErrProjectNotFound
 	}
 	return nil
 }
 
 func DeleteProject(projectID uuid.UUID, ownerID int64, database *gorm.DB, ctx context.Context) error {
-	result := database.WithContext(ctx).
-		Where("id = ? AND owner_id = ?", projectID, ownerID).
-		Delete(&types.Project{})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return errors.New("project not found or not owned by user")
-	}
-	return nil
+	return database.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("project_id = ?", projectID).Delete(&types.Build{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("project_id = ?", projectID).Delete(&types.ProjectEnvVar{}).Error; err != nil {
+			return err
+		}
+		result := tx.Where("id = ? AND owner_id = ?", projectID, ownerID).Delete(&types.Project{})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return ErrProjectNotFound
+		}
+		return nil
+	})
 }
