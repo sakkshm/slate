@@ -14,8 +14,11 @@ ARG ENTRYPOINT_PATH=./cmd/api
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /server ${ENTRYPOINT_PATH}
 
-FROM scratch AS production
+FROM alpine:3.20 AS production
+RUN apk add --no-cache ca-certificates wget \
+    && addgroup -S slate && adduser -S slate -G slate
 COPY --from=builder /server /server
+USER slate
 EXPOSE 8080
 ENTRYPOINT ["/server"]
 

@@ -19,7 +19,6 @@ services:
     volumes:
       - .:/app
       - go_modules:/go/pkg/mod
-      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - PORT=${APP_INTERNAL_PORT}
       - APP_ENV=${APP_ENV_DEV}
@@ -38,8 +37,18 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
       - MINIO_BUCKET=${MINIO_BUCKET}
-      - DOCKER_SOCKET=/var/run/docker.sock
       - BUILD_IMAGE=slate-base-runner:latest
+      - BUILD_TIMEOUT=${BUILD_TIMEOUT}
+      - SITE_BASE_DOMAIN=${SITE_BASE_DOMAIN}
+      - SITE_SCHEME=${SITE_SCHEME}
+      - SITE_PORT=${SITE_PORT}
+      - SITE_RESERVED_HOSTS=${SITE_RESERVED_HOSTS}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
+      - TRUSTED_PROXY_IPS=${TRUSTED_PROXY_IPS}
+      - RATE_GLOBAL_RPS=${RATE_GLOBAL_RPS}
+      - RATE_AUTH_RPM=${RATE_AUTH_RPM}
+      - RATE_WEBHOOK_RPM=${RATE_WEBHOOK_RPM}
+      - RATE_BUILD_RPH=${RATE_BUILD_RPH}
     profiles:
       - dev
     depends_on:
@@ -61,8 +70,6 @@ services:
         - ENTRYPOINT_PATH=./cmd/api
     ports:
       - "${API_PROD_PORT}:${APP_INTERNAL_PORT}"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - PORT=${APP_INTERNAL_PORT}
       - APP_ENV=${APP_ENV_PROD}
@@ -81,8 +88,18 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
       - MINIO_BUCKET=${MINIO_BUCKET}
-      - DOCKER_SOCKET=/var/run/docker.sock
       - BUILD_IMAGE=slate-base-runner:latest
+      - BUILD_TIMEOUT=${BUILD_TIMEOUT}
+      - SITE_BASE_DOMAIN=${SITE_BASE_DOMAIN}
+      - SITE_SCHEME=${SITE_SCHEME}
+      - SITE_PORT=${SITE_PORT}
+      - SITE_RESERVED_HOSTS=${SITE_RESERVED_HOSTS}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
+      - TRUSTED_PROXY_IPS=${TRUSTED_PROXY_IPS}
+      - RATE_GLOBAL_RPS=${RATE_GLOBAL_RPS}
+      - RATE_AUTH_RPM=${RATE_AUTH_RPM}
+      - RATE_WEBHOOK_RPM=${RATE_WEBHOOK_RPM}
+      - RATE_BUILD_RPH=${RATE_BUILD_RPH}
     profiles:
       - prod
     depends_on:
@@ -94,6 +111,13 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:${APP_INTERNAL_PORT}/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
 
   worker-dev:
     build:
@@ -104,6 +128,7 @@ services:
       - .:/app
       - go_modules:/go/pkg/mod
       - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/slate-staging:/tmp/slate-staging
     environment:
       - APP_ENV=${APP_ENV_DEV}
       - DATABASE_URL=${DATABASE_URL}
@@ -123,6 +148,7 @@ services:
       - MINIO_BUCKET=${MINIO_BUCKET}
       - DOCKER_SOCKET=/var/run/docker.sock
       - BUILD_IMAGE=slate-base-runner:latest
+      - BUILD_TIMEOUT=${BUILD_TIMEOUT}
     profiles:
       - dev
     depends_on:
@@ -142,6 +168,7 @@ services:
       target: production
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/slate-staging:/tmp/slate-staging
     environment:
       - APP_ENV=${APP_ENV_PROD}
       - DATABASE_URL=${DATABASE_URL}
@@ -161,6 +188,7 @@ services:
       - MINIO_BUCKET=${MINIO_BUCKET}
       - DOCKER_SOCKET=/var/run/docker.sock
       - BUILD_IMAGE=slate-base-runner:latest
+      - BUILD_TIMEOUT=${BUILD_TIMEOUT}
     profiles:
       - prod
     depends_on:
@@ -172,9 +200,17 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
 
   db:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -194,6 +230,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     ports:
       - "${REDIS_PORT}:6379"
     volumes:
@@ -209,6 +246,7 @@ services:
 
   minio:
     image: minio/minio
+    restart: unless-stopped
     ports:
       - "${MINIO_API_PORT}:9000"
       - "${MINIO_CONSOLE_PORT}:9001"
