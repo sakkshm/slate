@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button"
 import { apiClient, type APIError } from "@/shared/api";
 import { toast } from "sonner";
 
-export function GithubButton() {
+export function GithubButton({ label = "Connect Github" }: { label?: string }) {
     const handleConnectGitHub = async () => {
         try {
             const data = await apiClient.get<{ url: string }>('/api/auth/github/initiate-login')
@@ -25,8 +25,8 @@ export function GithubButton() {
 
     return (
         <div className="flex gap-2">
-        <Button onClick={handleConnectGitHub}>
-            <IconBrandGithub data-icon="inline-start" /> Connect Github
+        <Button size="lg" onClick={handleConnectGitHub}>
+            <IconBrandGithub data-icon="inline-start" /> {label}
         </Button>
         </div>
     )

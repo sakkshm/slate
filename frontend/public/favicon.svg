@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <pattern id="dither" width="4" height="4" patternUnits="userSpaceOnUse">
+      <rect width="4" height="4" fill="#2a2a31"/>
+      <rect width="2" height="2" fill="#0a0a0c"/>
+      <rect x="2" y="2" width="2" height="2" fill="#0a0a0c"/>
+    </pattern>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="#0a0a0c"/>
+  <rect width="32" height="32" rx="7" fill="url(#dither)"/>
+  <text x="16" y="23" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="19" font-weight="700" fill="#f5f5f5" text-anchor="middle">s</text>
+</svg>
