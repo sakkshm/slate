@@ -63,8 +63,6 @@ export interface Project {
   install_cmd: string
   build_cmd: string
   out_dir: string
-  active_build_id?: string | null
-  active_build?: Build | null
   created_at: string
   updated_at: string
 }

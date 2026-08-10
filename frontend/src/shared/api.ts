@@ -6,6 +6,22 @@ export interface APIError {
 
 const apiBase = () => import.meta.env.VITE_API_URL as string;
 
+const UNAUTHORIZED_EVENT = "slate:unauthorized";
+
+let unauthorizedNotified = false;
+
+export function notifyUnauthorized(): void {
+  if (unauthorizedNotified) return;
+  unauthorizedNotified = true;
+  window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+}
+
+export function onUnauthorized(handler: () => void): () => void {
+  const listener = () => handler();
+  window.addEventListener(UNAUTHORIZED_EVENT, listener);
+  return () => window.removeEventListener(UNAUTHORIZED_EVENT, listener);
+}
+
 async function request<T>(endpoint: string, method: string, body?: unknown): Promise<T> {
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
   const url = `${apiBase()}/${cleanEndpoint}`;
@@ -38,6 +54,10 @@ async function request<T>(endpoint: string, method: string, body?: unknown): Pro
       if (errorData?.message) message = errorData.message;
     } catch {
       message = response.statusText || message;
+    }
+
+    if (response.status === 401 && code === "UNAUTHORIZED") {
+      notifyUnauthorized();
     }
 
     throw { status: response.status, code, message } as APIError;

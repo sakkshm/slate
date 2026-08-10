@@ -225,13 +225,6 @@ function BuildDetailPage() {
             value={project?.name ?? build.project_id.slice(0, 8)}
           />
         </CardContent>
-        {build.asset_url ? (
-          <CardContent className="pt-0">
-            <p className="truncate text-xs text-muted-foreground">
-              Artifact: {build.asset_url}
-            </p>
-          </CardContent>
-        ) : null}
       </Card>
 
       <h2 className="mb-2 text-sm font-medium">Build logs</h2>

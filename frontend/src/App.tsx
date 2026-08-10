@@ -1,5 +1,6 @@
 import { Route, Routes, useParams } from "react-router-dom"
 import { Toaster } from "@/components/ui/sonner"
+import { useSessionGuard } from "@/hooks/useSessionGuard"
 import { DashboardLayout } from "@/components/layout/DashboardLayout"
 import { GitHubCallback } from "./pages/GitHubCallback"
 import HomePage from "./pages/HomePage"
@@ -32,6 +33,8 @@ function BuildDetailRoute() {
 }
 
 export default function App() {
+  useSessionGuard()
+
   return (
     <>
       <Routes>

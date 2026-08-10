@@ -44,7 +44,7 @@ function UserMenu() {
         render={
           <button
             type="button"
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left outline-none transition-colors hover:bg-muted"
+            className="flex items-center gap-2 rounded-full p-1 pr-2.5 outline-none transition-colors hover:bg-muted"
           >
             <Avatar size="sm">
               {user?.avatar_url ? (
@@ -54,16 +54,19 @@ function UserMenu() {
                 {user?.username?.slice(0, 2).toUpperCase() ?? "?"}
               </AvatarFallback>
             </Avatar>
-            <div className="min-w-0 flex-1 leading-tight">
-              <p className="truncate text-sm font-medium">{user?.name}</p>
-              <p className="truncate text-xs text-muted-foreground">
-                @{user?.username}
-              </p>
-            </div>
+            <span className="hidden text-sm font-medium sm:block">
+              {user?.name}
+            </span>
           </button>
         }
       />
-      <DropdownMenuContent align="start" className="w-56">
+      <DropdownMenuContent align="end" className="w-56">
+        <div className="px-2 py-1.5">
+          <p className="truncate text-sm font-medium">{user?.name}</p>
+          <p className="truncate text-xs text-muted-foreground">
+            @{user?.username}
+          </p>
+        </div>
         <DropdownMenuItem variant="destructive" onClick={handleSignOut}>
           <LogOut />
           Sign out
@@ -89,13 +92,10 @@ export function DashboardLayout() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <aside className="flex w-60 shrink-0 flex-col border-r bg-sidebar">
-        <div className="flex h-14 items-center justify-between border-b px-3">
+    <div className="flex h-screen flex-col overflow-hidden">
+      <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b bg-background px-4">
+        <div className="flex min-w-0 items-center gap-4">
           <Brand />
-          <ThemeToggle />
-        </div>
-        <nav className="flex flex-col gap-1 p-2">
           <Button
             variant="ghost"
             className="justify-start"
@@ -106,11 +106,12 @@ export function DashboardLayout() {
               </Link>
             }
           />
-        </nav>
-        <div className="mt-auto border-t p-2">
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <ThemeToggle />
           <UserMenu />
         </div>
-      </aside>
+      </header>
       <main className="flex-1 overflow-y-auto">
         <Outlet />
       </main>
