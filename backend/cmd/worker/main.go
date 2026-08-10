@@ -8,18 +8,20 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"slate-backend/internal/build"
 	"slate-backend/internal/clients"
 	githubclient "slate-backend/internal/github"
+	"slate-backend/internal/logging"
+	"slate-backend/internal/prune"
 	"slate-backend/internal/queue"
 	"slate-backend/internal/runner"
 	"slate-backend/pkg/config"
 	"slate-backend/pkg/types"
+	"strings"
 	"syscall"
 	"time"
 
@@ -28,6 +30,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+var logger *slog.Logger
+
 func buildLogSink(cli *redis.Client, buildID string) func(line string) {
 	return func(line string) {
 
@@ -35,11 +39,11 @@ func buildLogSink(cli *redis.Client, buildID string) func(line string) {
 		defer logCancel()
 
 		if err := queue.WriteLogLine(logCtx, cli, buildID, line); err != nil {
-			fmt.Printf("[WORKER] log store error: %v\n", err)
+			logger.Error("log store error", "error", err)
 		}
 
 		if err := queue.PublishLogLine(logCtx, cli, buildID, line); err != nil {
-			fmt.Printf("[WORKER] log publish error: %v\n", err)
+			logger.Error("log publish error", "error", err)
 		}
 	}
 }
@@ -47,22 +51,22 @@ func buildLogSink(cli *redis.Client, buildID string) func(line string) {
 func archiveBuildLogs(ctx context.Context, c *clients.Clients, buildID uuid.UUID) {
 	lines, err := queue.GetLogLines(ctx, c.Redis, buildID.String())
 	if err != nil {
-		fmt.Printf("[WORKER] Failed to read logs for archival: %v\n", err)
+		logger.Error("failed to read logs for archival", "build_id", buildID, "error", err)
 	} else if len(lines) > 0 {
 		if err := build.UpdateBuildLogContent(c.DB, buildID, strings.Join(lines, "\n"), ctx); err != nil {
-			fmt.Printf("[WORKER] Failed to archive build logs: %v\n", err)
+			logger.Error("failed to archive build logs", "build_id", buildID, "error", err)
 		}
 	}
 
 	if err := queue.PublishBuildDone(ctx, c.Redis, buildID.String()); err != nil {
-		fmt.Printf("[WORKER] Failed to publish build done: %v\n", err)
+		logger.Error("failed to publish build done", "build_id", buildID, "error", err)
 	}
 }
 
 func reportCommitStatus(cfg *config.Config, event *types.BuildEvent, state, description string) {
 	parts := strings.SplitN(event.RepoName, "/", 2)
 	if len(parts) != 2 {
-		fmt.Printf("[WORKER] Invalid repo name %q for commit status\n", event.RepoName)
+		logger.Warn("invalid repo name for commit status", "repo", event.RepoName)
 		return
 	}
 
@@ -82,27 +86,32 @@ func reportCommitStatus(cfg *config.Config, event *types.BuildEvent, state, desc
 		targetURL,
 		statusCtx,
 	); err != nil {
-		fmt.Printf("[WORKER] Commit status %s for build %s failed: %v\n", state, event.BuildID, err)
+		logger.Error("commit status update failed", "state", state, "build_id", event.BuildID, "error", err)
 	}
 }
 
 func main() {
 	cfg := config.LoadConfig()
+	slog.SetDefault(logging.New(cfg.Environment))
+	logger = slog.Default().With("component", "worker")
 
 	c, err := clients.New(cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize clients: %v", err)
+		logger.Error("failed to initialize clients", "error", err)
+		os.Exit(1)
 	}
 
 	dockerClient, err := runner.NewDockerClient(cfg.DockerSocketPath)
 	if err != nil {
-		log.Fatalf("Failed to create Docker client: %v", err)
+		logger.Error("failed to create Docker client", "error", err)
+		os.Exit(1)
 	}
 	defer dockerClient.Close()
 
 	stagingRoot := filepath.Join(os.TempDir(), "slate-staging")
 	if err := os.MkdirAll(stagingRoot, 0755); err != nil {
-		log.Fatalf("Failed to create staging dir: %v", err)
+		logger.Error("failed to create staging dir", "error", err)
+		os.Exit(1)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -113,16 +122,18 @@ func main() {
 
 	go func() {
 		<-stop
-		fmt.Println("[WORKER] Shutting down...")
+		logger.Info("shutting down worker")
 		cancel()
 	}()
 
-	fmt.Println("[WORKER] Ready. Listening for build jobs...")
+	startArtifactPruner(ctx, cfg, c)
+
+	logger.Info("worker ready. listening for build jobs")
 
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Println("[WORKER] Stopped.")
+			logger.Info("worker stopped")
 			return
 		default:
 		}
@@ -132,7 +143,7 @@ func main() {
 			if ctx.Err() != nil {
 				return
 			}
-			fmt.Printf("[WORKER] Error claiming build: %v\n", err)
+			logger.Error("error claiming build", "error", err)
 			time.Sleep(1 * time.Second)
 			continue
 		}
@@ -142,26 +153,26 @@ func main() {
 
 		buildID, err := uuid.Parse(event.BuildID)
 		if err != nil {
-			fmt.Printf("[WORKER] Invalid build ID %s: %v\n", event.BuildID, err)
+			logger.Error("invalid build ID", "build_id", event.BuildID, "error", err)
 			queue.AckBuild(ctx, c.Redis, msgID)
 			continue
 		}
 
 		projectID, err := uuid.Parse(event.ProjectID)
 		if err != nil {
-			fmt.Printf("[WORKER] Invalid project ID %s: %v\n", event.ProjectID, err)
+			logger.Error("invalid project ID", "project_id", event.ProjectID, "error", err)
 			queue.AckBuild(ctx, c.Redis, msgID)
 			continue
 		}
 
 		claimed, err := build.UpdateBuildStatusIfQueued(c.DB, buildID, ctx)
 		if err != nil {
-			fmt.Printf("[WORKER] Failed to update build status: %v\n", err)
+			logger.Error("failed to update build status", "build_id", buildID, "error", err)
 			queue.AckBuild(ctx, c.Redis, msgID)
 			continue
 		}
 		if !claimed {
-			fmt.Printf("[WORKER] Build %s was cancelled while queued, skipping\n", buildID)
+			logger.Info("build cancelled while queued, skipping", "build_id", buildID)
 			queue.AckBuild(ctx, c.Redis, msgID)
 			continue
 		}
@@ -206,7 +217,7 @@ func main() {
 		duration := time.Since(startTime).Milliseconds()
 
 		if errors.Is(err, context.Canceled) {
-			fmt.Printf("[WORKER] Build %s cancelled\n", buildID)
+			logger.Info("build cancelled", "build_id", buildID)
 			build.UpdateBuildStatus(c.DB, buildID, "cancelled", ctx)
 			build.UpdateBuildDuration(c.DB, buildID, duration, ctx)
 			cleanupContainer(ctx, dockerClient, containerID)
@@ -218,7 +229,7 @@ func main() {
 		}
 
 		if err != nil || statusCode != 0 {
-			fmt.Printf("[WORKER] Build %s failed (exit %d): %v\n", buildID, statusCode, err)
+			logger.Error("build failed", "build_id", buildID, "exit_code", statusCode, "error", err)
 			build.UpdateBuildStatus(c.DB, buildID, "failed", ctx)
 			build.UpdateBuildDuration(c.DB, buildID, duration, ctx)
 			cleanupContainer(ctx, dockerClient, containerID)
@@ -229,11 +240,11 @@ func main() {
 			continue
 		}
 
-		fmt.Printf("[WORKER] Build %s completed. Uploading artifacts...\n", buildID)
+		logger.Info("build completed, uploading artifacts", "build_id", buildID)
 
 		hash, tempFile, err := createArtifactArchive(stagingDir)
 		if err != nil {
-			fmt.Printf("[WORKER] Failed to create artifact archive: %v\n", err)
+			logger.Error("failed to create artifact archive", "build_id", buildID, "error", err)
 			build.UpdateBuildStatus(c.DB, buildID, "failed", ctx)
 			cleanupContainer(ctx, dockerClient, containerID)
 			os.RemoveAll(stagingDir)
@@ -247,7 +258,7 @@ func main() {
 
 		exists, err := c.MinIO.Exists(ctx, assetKey)
 		if err != nil {
-			fmt.Printf("[WORKER] Failed to check artifact existence: %v\n", err)
+			logger.Error("failed to check artifact existence", "build_id", buildID, "error", err)
 			os.Remove(tempFile)
 			build.UpdateBuildStatus(c.DB, buildID, "failed", ctx)
 			cleanupContainer(ctx, dockerClient, containerID)
@@ -261,7 +272,7 @@ func main() {
 		if !exists {
 			f, err := os.Open(tempFile)
 			if err != nil {
-				fmt.Printf("[WORKER] Failed to open temp file: %v\n", err)
+				logger.Error("failed to open temp file", "build_id", buildID, "error", err)
 				os.Remove(tempFile)
 				build.UpdateBuildStatus(c.DB, buildID, "failed", ctx)
 				cleanupContainer(ctx, dockerClient, containerID)
@@ -274,7 +285,7 @@ func main() {
 
 			stat, _ := f.Stat()
 			if err := c.MinIO.Upload(ctx, assetKey, f, stat.Size()); err != nil {
-				fmt.Printf("[WORKER] Failed to upload artifacts: %v\n", err)
+				logger.Error("failed to upload artifacts", "build_id", buildID, "error", err)
 				f.Close()
 				os.Remove(tempFile)
 				build.UpdateBuildStatus(c.DB, buildID, "failed", ctx)
@@ -291,16 +302,25 @@ func main() {
 		os.Remove(tempFile)
 
 		if err := build.UpdateBuildAssetLocation(c.DB, buildID, hash, ctx); err != nil {
-			fmt.Printf("[WORKER] Failed to update asset location: %v\n", err)
+			logger.Error("failed to update asset location", "build_id", buildID, "error", err)
 		}
 
 		build.UpdateBuildDuration(c.DB, buildID, duration, ctx)
 
 		if err := build.UpdateBuildStatus(c.DB, buildID, "ready", ctx); err != nil {
-			fmt.Printf("[WORKER] Failed to update build status: %v\n", err)
+			logger.Error("failed to update build status", "build_id", buildID, "error", err)
 		}
 
-		fmt.Printf("[WORKER] Build %s deployed. Hash: %s\n", buildID, hash)
+		err = queue.PublishDeployment(ctx, c.Redis, event.Slug, queue.DeployEntry{
+			ProjectID: projectID.String(),
+			AssetHash: hash,
+			UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+		})
+		if err != nil {
+			logger.Error("failed to publish deployment", "build_id", buildID, "slug", event.Slug, "error", err)
+		}
+
+		logger.Info("build deployed", "build_id", buildID, "hash", hash)
 
 		cleanupContainer(ctx, dockerClient, containerID)
 		os.RemoveAll(stagingDir)
@@ -317,6 +337,28 @@ func cleanupContainer(ctx context.Context, dockerClient *client.Client, containe
 	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cleanupCancel()
 	runner.RemoveDockerContainer(cleanupCtx, dockerClient, containerID)
+}
+
+func startArtifactPruner(ctx context.Context, cfg *config.Config, c *clients.Clients) {
+	interval := time.Duration(cfg.PruneIntervalHours) * time.Hour
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				cutoff := time.Now().AddDate(0, 0, -cfg.ArtifactRetentionDays)
+				deleted, err := prune.PruneArtifacts(ctx, c.DB, c.MinIO, cutoff)
+				if err != nil {
+					logger.Error("artifact prune error", "error", err)
+				} else if deleted > 0 {
+					logger.Info("pruned old artifacts", "count", deleted, "older_than_days", cfg.ArtifactRetentionDays)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 }
 
 func createArtifactArchive(sourceDir string) (hash string, tempPath string, err error) {
