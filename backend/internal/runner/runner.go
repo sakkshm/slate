@@ -123,11 +123,11 @@ func RunBuild(ctx context.Context, cli *client.Client, req BuildRequest) (string
 			lw.sink(string(lw.pending))
 			lw.pending = lw.pending[:0]
 		}
-		
+
 		if demuxErr == io.EOF {
 			demuxErr = nil
 		}
-		
+
 		logErrCh <- demuxErr
 	}()
 
@@ -162,14 +162,3 @@ func safeCleanup(cli *client.Client, containerID string) {
 	_ = StopDockerContainer(cleanupCtx, cli, containerID, stopTimeout)
 	_ = RemoveDockerContainer(cleanupCtx, cli, containerID)
 }
-
-// CleanupStagingDir removes extracted build artifacts from the host staging directory.
-// Uncomment in production to prevent disk space creep across sequential builds.
-// When uncommenting, also add these imports: "os" and "path/filepath"
-// func CleanupStagingDir(stagingDir, containerID string) error {
-// 	target := filepath.Join(stagingDir, containerID)
-// 	if err := os.RemoveAll(target); err != nil {
-// 		return fmt.Errorf("failed cleaning staging dir %s: %w", target, err)
-// 	}
-// 	return nil
-// }

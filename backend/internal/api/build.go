@@ -8,6 +8,7 @@ import (
 	buildpkg "slate-backend/internal/build"
 	"slate-backend/internal/envvar"
 	"slate-backend/internal/framework"
+	"slate-backend/internal/gateway"
 	githubclient "slate-backend/internal/github"
 	"slate-backend/internal/project"
 	"slate-backend/internal/queue"
@@ -121,11 +122,10 @@ func (e *APIEngine) enqueueBuild(r *http.Request, proj *types.Project, usr *type
 
 	cfg := framework.Resolve(proj.Framework, proj.InstallCmd, proj.BuildCmd, proj.OutDir)
 
-	_ = project.UpdateProject(e.clients.DB, proj.ID, proj.OwnerID, map[string]interface{}{"active_build_id": buildID}, r.Context())
-
 	event := types.BuildEvent{
 		ProjectID:               proj.ID.String(),
 		BuildID:                 buildID.String(),
+		Slug:                    proj.Slug,
 		RepoURL:                 proj.RepoURL,
 		RepoName:                proj.RepoName,
 		InstallationAccessToken: installToken,
@@ -139,13 +139,13 @@ func (e *APIEngine) enqueueBuild(r *http.Request, proj *types.Project, usr *type
 
 	envVars, envErr := envvar.ResolveAll(e.clients.DB, []byte(e.config.EncryptionKey), proj.ID, r.Context())
 	if envErr != nil {
-		fmt.Printf("[API] Failed to resolve env vars: %v\n", envErr)
+		apiLog().Error("failed to resolve env vars", "error", envErr)
 	} else {
 		event.Env = envVars
 	}
 
 	if _, err := queue.PublishBuildRequest(r.Context(), e.clients.Redis, event); err != nil {
-		fmt.Printf("[API] Failed to publish build event: %v\n", err)
+		return uuid.Nil, fmt.Errorf("failed to publish build request: %w", err)
 	}
 
 	return buildID, nil
@@ -239,7 +239,7 @@ func (e *APIEngine) HandleGetBuild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deploymentURL := fmt.Sprintf("https://%s.%s", proj.Slug, e.config.SiteBaseDomain)
+	deploymentURL := gateway.DeploymentURL(e.config, proj.Slug)
 	assetURL := fmt.Sprintf("http://%s/%s/projects/%s/builds/%s.tar.gz",
 		e.config.MinIOEndpoint, e.config.MinIOBucket, projectID, b.AssetLocation)
 

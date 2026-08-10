@@ -1,12 +1,10 @@
 package runner
 
 import (
-	"archive/tar"
 	"context"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -118,60 +116,6 @@ func RemoveDockerContainer(ctx context.Context, cli *client.Client, containerID 
 	err := cli.ContainerRemove(ctx, containerID, removeOptions)
 	if err != nil {
 		return fmt.Errorf("failed removing container %s: %w", containerID, err)
-	}
-
-	return nil
-}
-
-func ExtractAssetsFromContainer(ctx context.Context, client *client.Client, containerID string, outDir string, stagDir string) error {
-	cleanOutDir := "/" + strings.Trim(outDir, "/")
-
-	tarStream, _, err := client.CopyFromContainer(ctx, containerID, cleanOutDir)
-	if err != nil {
-		return fmt.Errorf("failed fetching assets from folder %s: %w", cleanOutDir, err)
-	}
-	defer tarStream.Close()
-
-	tarReader := tar.NewReader(tarStream)
-
-	for {
-		header, err := tarReader.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("failed extraction stream step parsing: %w", err)
-		}
-
-		relPath := header.Name
-		if idx := strings.Index(relPath, "/"); idx != -1 {
-			relPath = relPath[idx+1:]
-		}
-
-		targetPath := filepath.Join(stagDir, containerID, relPath)
-
-		switch header.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(targetPath, 0755); err != nil {
-				return fmt.Errorf("failed directory tree generation: %w", err)
-			}
-		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
-				return fmt.Errorf("failed structural branch allocation: %w", err)
-			}
-
-			outFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, header.FileInfo().Mode())
-			if err != nil {
-				return fmt.Errorf("failed filesystem file tracking initialization: %w", err)
-			}
-
-			if _, err := io.Copy(outFile, tarReader); err != nil {
-				outFile.Close()
-				return fmt.Errorf("failed extraction data copy transaction: %w", err)
-			}
-
-			outFile.Close()
-		}
 	}
 
 	return nil

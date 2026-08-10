@@ -28,6 +28,22 @@ func GetProjectByID(projectID uuid.UUID, database *gorm.DB, ctx context.Context)
 	return &project, nil
 }
 
+func GetProjectBySlug(slug string, database *gorm.DB, ctx context.Context) (*types.Project, error) {
+	var project types.Project
+	result := database.WithContext(ctx).
+	Where("slug = ?", slug).
+	First(&project)
+
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, result.Error
+	}
+
+	return &project, nil
+}
+
 func GetProjectByRepoID(database *gorm.DB, repoID int64, ctx context.Context) (*types.Project, error) {
 	var project types.Project
 	result := database.WithContext(ctx).Where("repo_id = ?", repoID).First(&project)
@@ -47,6 +63,23 @@ func GetProjectsByOwner(ownerID int64, database *gorm.DB, ctx context.Context) (
 		return nil, result.Error
 	}
 	return projects, nil
+}
+
+func GetLatestReadyBuild(projectID uuid.UUID, database *gorm.DB, ctx context.Context) (*types.Build, error) {
+	var build types.Build
+	result := database.WithContext(ctx).
+	Where("project_id = ? AND status = ?", projectID, string(types.StatusReady)).
+	Order("created_at DESC").
+	First(&build)
+
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, result.Error
+	}
+
+	return &build, nil
 }
 
 func UpdateProject(database *gorm.DB, projectID uuid.UUID, ownerID int64, updates map[string]interface{}, ctx context.Context) error {

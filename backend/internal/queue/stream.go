@@ -39,11 +39,7 @@ func ClaimBuildRequest(ctx context.Context, client *redis.Client, consumerName s
 		Count:    1,
 		Block:    5 * time.Second,
 	}).Result()
-	if err == redis.Nil {
-		return nil, "", err
-	}
-
-	if len(streams) == 0 || len(streams[0].Messages) == 0 {
+	if err == redis.Nil || len(streams) == 0 || len(streams[0].Messages) == 0 {
 		return nil, "", nil
 	}
 

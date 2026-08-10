@@ -81,3 +81,21 @@ func (s *MinIOStore) Exists(ctx context.Context, key string) (bool, error) {
 
 	return true, nil
 }
+
+func (s *MinIOStore) List(ctx context.Context, prefix string) ([]string, error) {
+	var keys []string
+	for obj := range s.client.ListObjects(ctx, s.bucket, minio.ListObjectsOptions{
+		Prefix:    prefix,
+		Recursive: true,
+	}) {
+		if obj.Err != nil {
+			return nil, obj.Err
+		}
+		keys = append(keys, obj.Key)
+	}
+	return keys, nil
+}
+
+func (s *MinIOStore) Delete(ctx context.Context, key string) error {
+	return s.client.RemoveObject(ctx, s.bucket, key, minio.RemoveObjectOptions{})
+}
