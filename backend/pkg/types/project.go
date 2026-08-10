@@ -24,9 +24,6 @@ type Project struct {
 	BuildCmd   string `json:"build_cmd"`
 	OutDir     string `json:"out_dir"`
 
-	ActiveBuildID *uuid.UUID `json:"active_build_id,omitempty"`
-	ActiveBuild   *Build     `json:"active_build,omitempty"`
-
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

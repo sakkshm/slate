@@ -3,12 +3,12 @@ package api
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"slate-backend/internal/auth"
 	"slate-backend/internal/framework"
 	githubclient "slate-backend/internal/github"
 	"slate-backend/internal/project"
+	"slate-backend/internal/queue"
 	"slate-backend/internal/user"
 	"slate-backend/pkg/types"
 	"slate-backend/pkg/utils"
@@ -65,13 +65,29 @@ func (e *APIEngine) HandleCreateProject(w http.ResponseWriter, r *http.Request) 
 	detectedFramework := req.Framework
 
 	if detectedFramework == "" {
-		packagePath := "package.json"
-		if req.RootDir != "" {
-			packagePath = strings.TrimPrefix(req.RootDir, "/") + "/package.json"
-		}
-		if content, err := githubclient.GetRepoFileContent(installToken, repoOwner, repoName, packagePath, req.ProdBranch, r.Context()); err == nil {
-			if fw, _ := framework.DetectFromPackageJSON(content); fw != "" {
-				detectedFramework = fw
+		fw, appDir := framework.DetectFromRepo(
+			func(path string) ([]byte, error) {
+				return githubclient.GetRepoFileContent(installToken, repoOwner, repoName, path, req.ProdBranch, r.Context())
+			},
+			func(path string) ([]string, error) {
+				entries, err := githubclient.GetRepoContents(installToken, repoOwner, repoName, path, req.ProdBranch, r.Context())
+				if err != nil {
+					return nil, err
+				}
+				dirs := make([]string, 0, len(entries))
+				for _, e := range entries {
+					if e.Type == "dir" {
+						dirs = append(dirs, e.Name)
+					}
+				}
+				return dirs, nil
+			},
+			req.RootDir,
+		)
+		if fw != "" {
+			detectedFramework = fw
+			if appDir != "" {
+				req.RootDir = appDir
 			}
 		}
 	}
@@ -104,13 +120,12 @@ func (e *APIEngine) HandleCreateProject(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	slug := strings.ToLower(strings.ReplaceAll(req.Name, " ", "-"))
 	suffix, err := utils.GenerateRandomString(4)
 	if err != nil {
 		utils.WriteHTTPError(w, http.StatusInternalServerError, "SLUG_ERR", "Failed to generate project slug")
 		return
 	}
-	slug = username + "-" + repoName + "-" + suffix
+	slug := utils.ProjectSlug(username, repoName, suffix)
 
 	proj := &types.Project{
 		ID:         uuid.New(),
@@ -136,9 +151,9 @@ func (e *APIEngine) HandleCreateProject(w http.ResponseWriter, r *http.Request) 
 	e.registerProjectWebhook(repoOwner, repoName, installToken, r.Context())
 
 	if buildID, err := e.enqueueBuild(r, proj, userProfile); err != nil {
-		fmt.Printf("[API] Failed to trigger initial build for project %s: %v\n", proj.ID, err)
+		apiLog().Error("failed to trigger initial build", "project_id", proj.ID, "error", err)
 	} else {
-		fmt.Printf("[API] Initial build %s queued for project %s\n", buildID, proj.ID)
+		apiLog().Info("initial build queued", "build_id", buildID, "project_id", proj.ID)
 	}
 
 	w.WriteHeader(http.StatusCreated)
@@ -268,6 +283,12 @@ func (e *APIEngine) HandleDeleteProject(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	proj, err := project.GetProjectByID(projectID, e.clients.DB, r.Context())
+	if err != nil {
+		utils.WriteHTTPError(w, http.StatusInternalServerError, "DB_ERR", "Failed to fetch updated project")
+		return
+	}
+
 	if err := project.DeleteProject(projectID, userID, e.clients.DB, r.Context()); err != nil {
 		if errors.Is(err, project.ErrProjectNotFound) {
 			utils.WriteHTTPError(w, http.StatusNotFound, "PRJ_NOT_FND", "Project not found")
@@ -275,6 +296,22 @@ func (e *APIEngine) HandleDeleteProject(w http.ResponseWriter, r *http.Request) 
 		}
 		utils.WriteHTTPError(w, http.StatusInternalServerError, "DB_ERR", "Failed to delete project")
 		return
+	}
+
+	err = queue.DeleteDeployment(r.Context(), e.clients.Redis, proj.Slug)
+	if err != nil {
+		utils.WriteHTTPError(w, http.StatusInternalServerError, "DEP_ERR", "Failed to Delete Deployment")
+		return
+	}
+
+	keys, listErr := e.clients.MinIO.List(r.Context(), "projects/"+projectID.String()+"/")
+	if listErr != nil {
+		apiLog().Error("failed to list MinIO objects for project", "project_id", projectID, "error", listErr)
+	}
+	for _, key := range keys {
+		if err := e.clients.MinIO.Delete(r.Context(), key); err != nil {
+			apiLog().Error("failed to delete MinIO object", "key", key, "error", err)
+		}
 	}
 
 	w.WriteHeader(http.StatusNoContent)

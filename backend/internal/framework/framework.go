@@ -2,6 +2,8 @@ package framework
 
 import (
 	"encoding/json"
+	"sort"
+	"strings"
 )
 
 type Config struct {
@@ -34,6 +36,9 @@ var detectionOrder = []struct {
 	{"react", "react-scripts"},
 }
 
+// preferredSubdirs orders candidate app directories when scanning a monorepo.
+var preferredSubdirs = []string{"frontend", "web", "app", "client", "ui", "dashboard", "site"}
+
 type PackageJSON struct {
 	Dependencies    map[string]string `json:"dependencies"`
 	DevDependencies map[string]string `json:"devDependencies"`
@@ -54,6 +59,86 @@ func DetectFromPackageJSON(content []byte) (string, Config) {
 		}
 	}
 	return "static", defaults["static"]
+}
+
+func detectNameFromPkg(pkg *PackageJSON) string {
+	for _, d := range detectionOrder {
+		if _, ok := pkg.Dependencies[d.marker]; ok {
+			return d.framework
+		}
+		if _, ok := pkg.DevDependencies[d.marker]; ok {
+			return d.framework
+		}
+	}
+	return ""
+}
+
+func detectName(content []byte) string {
+	var pkg PackageJSON
+	if err := json.Unmarshal(content, &pkg); err != nil {
+		return ""
+	}
+	return detectNameFromPkg(&pkg)
+}
+
+func joinPath(base, name string) string {
+	if base == "" {
+		return name
+	}
+	return base + "/" + name
+}
+
+func prioritizeSubdirs(dirs []string) []string {
+	rank := func(d string) int {
+		for i, p := range preferredSubdirs {
+			if d == p {
+				return i
+			}
+		}
+		return len(preferredSubdirs)
+	}
+	sort.SliceStable(dirs, func(i, j int) bool {
+		ri, rj := rank(dirs[i]), rank(dirs[j])
+		if ri != rj {
+			return ri < rj
+		}
+		return dirs[i] < dirs[j]
+	})
+	return dirs
+}
+
+// DetectFromRepo locates a deployable web app within a repository. It first
+// checks the package.json at basePath, then scans subdirectories (preferring
+// common app directory names) for a package.json declaring a known framework.
+// It returns the detected framework and the app directory relative to the repo
+// root ("" when the app lives at the root), or ("", "") when nothing is found.
+func DetectFromRepo(
+	fetchPackage func(path string) ([]byte, error),
+	listDirs func(path string) ([]string, error),
+	basePath string,
+) (string, string) {
+	basePath = strings.Trim(basePath, "/")
+
+	if content, err := fetchPackage(joinPath(basePath, "package.json")); err == nil {
+		if fw := detectName(content); fw != "" {
+			return fw, basePath
+		}
+	}
+
+	dirs, err := listDirs(basePath)
+	if err != nil {
+		return "", ""
+	}
+	for _, dir := range prioritizeSubdirs(dirs) {
+		content, err := fetchPackage(joinPath(joinPath(basePath, dir), "package.json"))
+		if err != nil {
+			continue
+		}
+		if fw := detectName(content); fw != "" {
+			return fw, joinPath(basePath, dir)
+		}
+	}
+	return "", ""
 }
 
 func Resolve(framework, installCmd, buildCmd, outDir string) Config {
