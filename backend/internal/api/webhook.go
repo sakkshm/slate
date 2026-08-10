@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"slate-backend/internal/auth"
 	buildpkg "slate-backend/internal/build"
@@ -24,9 +23,10 @@ import (
 )
 
 func (e *APIEngine) HandleGithubWebhook(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 5<<20) // 5MB cap
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Printf("[WEBHOOK] Failed to read request body: %v", err)
+		apiLog().Error("failed to read request body", "error", err)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -46,7 +46,7 @@ func (e *APIEngine) HandleGithubWebhook(w http.ResponseWriter, r *http.Request) 
 
 	var event types.GithubPushEvent
 	if err := json.Unmarshal(body, &event); err != nil {
-		log.Printf("[WEBHOOK] Failed to parse payload: %v", err)
+		apiLog().Error("failed to parse webhook payload", "error", err)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -58,31 +58,31 @@ func (e *APIEngine) HandleGithubWebhook(w http.ResponseWriter, r *http.Request) 
 
 	proj, err := project.GetProjectByRepoID(e.clients.DB, event.Repository.ID, r.Context())
 	if err != nil {
-		log.Printf("[WEBHOOK] Failed to look up project for repo %d: %v", event.Repository.ID, err)
+		apiLog().Error("failed to look up project for repo", "repo_id", event.Repository.ID, "error", err)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 	if proj == nil {
-		log.Printf("[WEBHOOK] No project found for repo %d, ignoring", event.Repository.ID)
+		apiLog().Info("no project found for repo, ignoring", "repo_id", event.Repository.ID)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
 	branch := strings.TrimPrefix(event.Ref, "refs/heads/")
 	if branch != proj.ProdBranch {
-		log.Printf("[WEBHOOK] Branch %s does not match prod branch %s, ignoring", branch, proj.ProdBranch)
+		apiLog().Info("branch does not match prod branch, ignoring", "branch", branch, "prod_branch", proj.ProdBranch)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
 	existing, err := buildpkg.GetBuildByProjectAndCommit(e.clients.DB, proj.ID, event.After, r.Context())
 	if err != nil {
-		log.Printf("[WEBHOOK] Failed to check existing build: %v", err)
+		apiLog().Error("failed to check existing build", "error", err)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 	if existing != nil {
-		log.Printf("[WEBHOOK] Build already exists for commit %s, skipping", event.After)
+		apiLog().Info("build already exists for commit, skipping", "commit", event.After)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -94,14 +94,14 @@ func (e *APIEngine) HandleGithubWebhook(w http.ResponseWriter, r *http.Request) 
 
 	usr, err := user.GetUserProfile(proj.OwnerID, e.clients.DB, r.Context())
 	if err != nil || usr == nil {
-		log.Printf("[WEBHOOK] Failed to get owner profile for project %s: %v", proj.ID, err)
+		apiLog().Error("failed to get owner profile for project", "project_id", proj.ID, "error", err)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
 	installToken, err := auth.GetInstallationAccessToken(e.config, usr.GithubInstallationID, r.Context())
 	if err != nil {
-		log.Printf("[WEBHOOK] Failed to get installation token: %v", err)
+		apiLog().Error("failed to get installation token", "error", err)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -116,18 +116,17 @@ func (e *APIEngine) HandleGithubWebhook(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := buildpkg.CreateBuild(e.clients.DB, newBuild, r.Context()); err != nil {
-		log.Printf("[WEBHOOK] Failed to create build: %v", err)
+		apiLog().Error("failed to create build", "error", err)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
 	cfg := framework.Resolve(proj.Framework, proj.InstallCmd, proj.BuildCmd, proj.OutDir)
 
-	_ = project.UpdateProject(e.clients.DB, proj.ID, proj.OwnerID, map[string]interface{}{"active_build_id": buildID}, r.Context())
-
 	buildEvent := types.BuildEvent{
 		ProjectID:               proj.ID.String(),
 		BuildID:                 buildID.String(),
+		Slug:                    proj.Slug,
 		RepoURL:                 proj.RepoURL,
 		RepoName:                proj.RepoName,
 		InstallationAccessToken: installToken,
@@ -141,16 +140,16 @@ func (e *APIEngine) HandleGithubWebhook(w http.ResponseWriter, r *http.Request) 
 
 	envVars, envErr := envvar.ResolveAll(e.clients.DB, []byte(e.config.EncryptionKey), proj.ID, r.Context())
 	if envErr != nil {
-		log.Printf("[WEBHOOK] Failed to resolve env vars: %v", envErr)
+		apiLog().Error("failed to resolve env vars", "error", envErr)
 	} else {
 		buildEvent.Env = envVars
 	}
 
 	if _, err := queue.PublishBuildRequest(r.Context(), e.clients.Redis, buildEvent); err != nil {
-		log.Printf("[WEBHOOK] Failed to publish build event: %v", err)
+		apiLog().Error("failed to publish build event", "error", err)
 	}
 
-	log.Printf("[WEBHOOK] Queued build %s for repo %s commit %s", buildID, event.Repository.FullName, event.After)
+	apiLog().Info("queued build", "build_id", buildID, "repo", event.Repository.FullName, "commit", event.After)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -159,22 +158,22 @@ func (e *APIEngine) registerProjectWebhook(repoOwner, repoName, installToken str
 
 	hooks, err := githubclient.ListRepoWebhooks(installToken, repoOwner, repoName, ctx)
 	if err != nil {
-		log.Printf("[API] Unable to check existing webhooks for %s/%s: %v", repoOwner, repoName, err)
+		apiLog().Error("unable to check existing webhooks", "repo", repoOwner+"/"+repoName, "error", err)
 		return
 	}
 	for _, h := range hooks {
 		if h.Config.URL == webhookURL {
-			log.Printf("[API] Webhook already registered for %s/%s", repoOwner, repoName)
+			apiLog().Info("webhook already registered", "repo", repoOwner+"/"+repoName)
 			return
 		}
 	}
 
 	if err := githubclient.CreateRepoWebhook(installToken, repoOwner, repoName, webhookURL, e.config.GithubWebhookSecret, ctx); err != nil {
-		log.Printf("[API] Failed to register webhook for %s/%s: %v", repoOwner, repoName, err)
+		apiLog().Error("failed to register webhook", "repo", repoOwner+"/"+repoName, "error", err)
 		return
 	}
 
-	log.Printf("[API] Registered push webhook for %s/%s -> %s", repoOwner, repoName, webhookURL)
+	apiLog().Info("registered push webhook", "repo", repoOwner+"/"+repoName, "url", webhookURL)
 }
 
 func verifyWebhookSignature(secret string, body []byte, signatureHeader string) bool {

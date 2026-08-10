@@ -45,6 +45,7 @@ func (e *APIEngine) HandleInitiateLogin(w http.ResponseWriter, r *http.Request) 
 }
 
 func (e *APIEngine) HandleCallback(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB cap
 	var payload types.CallbackRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		utils.WriteHTTPError(w, http.StatusBadRequest, "BAD_REQUEST", "Bad request")
@@ -119,7 +120,7 @@ func (e *APIEngine) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	TTLSec := 60 * 60
+	TTLSec := 60 * 60 * 24 * 7
 	userJWTClaims := &types.JWTClaim{
 		ID:             userProfile.ID,
 		GithubUsername: userProfile.GithubUsername,
@@ -166,16 +167,24 @@ func (e *APIEngine) HandleInstallURL(w http.ResponseWriter, r *http.Request) {
 }
 
 func (e *APIEngine) HandleAuthLogout(w http.ResponseWriter, r *http.Request) {
+	isProd := e.config.Environment == "production"
 
-	http.SetCookie(w, &http.Cookie{
+	cookie := &http.Cookie{
 		Name:     "slate-session",
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteNoneMode,
-	})
+		Secure:   isProd,
+	}
+
+	if isProd {
+		cookie.SameSite = http.SameSiteNoneMode
+	} else {
+		cookie.SameSite = http.SameSiteLaxMode
+	}
+
+	http.SetCookie(w, cookie)
 
 	w.WriteHeader(http.StatusOK)
 }

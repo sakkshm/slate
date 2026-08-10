@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"slate-backend/internal/auth"
 	"slate-backend/internal/user"
@@ -49,14 +48,14 @@ func (e *APIEngine) HandleGetUserRepos(w http.ResponseWriter, r *http.Request) {
 
 	userInstallAccessToken, err := auth.GetInstallationAccessToken(e.config, userProfile.GithubInstallationID, r.Context())
 	if err != nil {
-		fmt.Println(err.Error())
+		apiLog().Error("failed to get installation token", "error", err)
 		utils.WriteHTTPError(w, http.StatusUnauthorized, "USR_INST_TKN_NOT_FND", "User Installation token not found")
 		return
 	}
 
 	userRepos, err := user.GetUserInstalledRepos(userInstallAccessToken, r.Context())
 	if err != nil {
-		fmt.Println(err.Error())
+		apiLog().Error("failed to get user installed repos", "error", err)
 		utils.WriteHTTPError(w, http.StatusUnauthorized, "GET_REPOS_FAILED", "Unable to get user Repos")
 		return
 	}
