@@ -70,6 +70,8 @@ services:
         - ENTRYPOINT_PATH=./cmd/api
     ports:
       - "${API_PROD_PORT}:${APP_INTERNAL_PORT}"
+    volumes:
+      - ./slate-private-key.pem:/app/slate-private-key.pem:ro
     environment:
       - PORT=${APP_INTERNAL_PORT}
       - APP_ENV=${APP_ENV_PROD}
@@ -169,6 +171,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /tmp/slate-staging:/tmp/slate-staging
+      - ./slate-private-key.pem:/app/slate-private-key.pem:ro
     environment:
       - APP_ENV=${APP_ENV_PROD}
       - DATABASE_URL=${DATABASE_URL}
