@@ -14,6 +14,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /worker ./cmd/worker
 
 FROM alpine:3.20 AS production
+WORKDIR /app
 RUN apk add --no-cache ca-certificates wget
 COPY --from=builder /worker /worker
 ENTRYPOINT ["/worker"]
