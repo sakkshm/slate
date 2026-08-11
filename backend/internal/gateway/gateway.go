@@ -118,7 +118,7 @@ func New(store Store, cfg *config.Config) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		slug, ok := IsDeploymentHost(r.Host, cfg.SiteBaseDomain, cfg.ReservedHosts...)
 		if !ok {
-			http.NotFound(w, r)
+			writeNotFound(w)
 			return
 		}
 
@@ -128,7 +128,7 @@ func New(store Store, cfg *config.Config) http.Handler {
 			return
 		}
 		if entry == nil {
-			http.NotFound(w, r)
+			writeNotFound(w)
 			return
 		}
 
