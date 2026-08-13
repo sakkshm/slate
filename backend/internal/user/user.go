@@ -41,36 +41,53 @@ func GetUserProfile(userID int64, database *gorm.DB, ctx context.Context) (*type
 
 func GetUserInstalledRepos(userInstallAccessToken string, ctx context.Context) (types.GithubInstallationReposResponse, error) {
 
-	apiURL := "https://api.github.com/installation/repositories"
-
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return types.GithubInstallationReposResponse{}, fmt.Errorf("failed to create repo request payload: %w", err)
-	}
-
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", userInstallAccessToken))
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-
 	client := &http.Client{Timeout: 12 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return types.GithubInstallationReposResponse{}, fmt.Errorf("failed to reach GitHub API: %w", err)
-	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return types.GithubInstallationReposResponse{}, fmt.Errorf("Github repos endpoint returned unexpected status: %d", resp.StatusCode)
+	result := types.GithubInstallationReposResponse{
+		Repositories: []types.GithubInstallationRepo{},
 	}
 
-	var apiResponse types.GithubInstallationReposResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
-		return types.GithubInstallationReposResponse{}, fmt.Errorf("failed to decode GitHub Installation access token response: %w", err)
+	const perPage = 100
+
+	for page := 1; ; page++ {
+		apiURL := fmt.Sprintf("https://api.github.com/installation/repositories?per_page=%d&page=%d", perPage, page)
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+		if err != nil {
+			return types.GithubInstallationReposResponse{}, fmt.Errorf("failed to create repo request payload: %w", err)
+		}
+
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", userInstallAccessToken))
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return types.GithubInstallationReposResponse{}, fmt.Errorf("failed to reach GitHub API: %w", err)
+		}
+
+		var apiResponse types.GithubInstallationReposResponse
+		decodeErr := json.NewDecoder(resp.Body).Decode(&apiResponse)
+		resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return types.GithubInstallationReposResponse{}, fmt.Errorf("Github repos endpoint returned unexpected status: %d", resp.StatusCode)
+		}
+		if decodeErr != nil {
+			return types.GithubInstallationReposResponse{}, fmt.Errorf("failed to decode GitHub Installation access token response: %w", decodeErr)
+		}
+
+		result.TotalCount = apiResponse.TotalCount
+		result.Repositories = append(result.Repositories, apiResponse.Repositories...)
+
+		if int64(len(result.Repositories)) >= apiResponse.TotalCount || len(apiResponse.Repositories) == 0 {
+			break
+		}
 	}
 
-	return apiResponse, nil
+	return result, nil
 
 }

@@ -88,7 +88,7 @@ func (e *APIEngine) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	installationID, err := auth.GetUserInstallations(tokenResp.AccessToken, r.Context())
+	installationID, err := auth.GetUserInstallations(tokenResp.AccessToken, userResp.ID, r.Context())
 	if err != nil {
 		utils.WriteHTTPError(w, http.StatusConflict, "NO_INSTALLATION", "GitHub App not installed. Please install the app first.")
 		return

@@ -11,7 +11,7 @@ type GitHubAuthUserResponse struct {
 	Login     string `json:"login"`      // The user's handle/username
 	Name      string `json:"name"`       // Display name (can be empty string)
 	Email     string `json:"email"`      // Primary email
-	AvatarURL string `json:"avatar_url"` // Profile image URL 
+	AvatarURL string `json:"avatar_url"` // Profile image URL
 }
 
 type GitHubEmailResponse struct {
@@ -25,10 +25,11 @@ type GitHubInstallationsResponse struct {
 }
 
 type GitHubInstallation struct {
-	ID      int64                  `json:"id"`
+	ID      int64                     `json:"id"`
 	Account GitHubInstallationAccount `json:"account"`
 }
 
 type GitHubInstallationAccount struct {
+	ID    int64  `json:"id"`
 	Login string `json:"login"`
 }

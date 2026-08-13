@@ -26,8 +26,8 @@ func GetInstallURL(cfg *config.Config) string {
 	)
 }
 
-func GetUserInstallations(accessToken string, ctx context.Context) (int64, error) {
-	apiURL := "https://api.github.com/user/installations"
+func GetUserInstallations(accessToken string, githubUserID int64, ctx context.Context) (int64, error) {
+	apiURL := "https://api.github.com/user/installations?per_page=100"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
@@ -54,11 +54,20 @@ func GetUserInstallations(accessToken string, ctx context.Context) (int64, error
 		return 0, fmt.Errorf("failed to decode installations response: %w", err)
 	}
 
-	if len(installationsResp.Installations) == 0 {
-		return 0, fmt.Errorf("no installations found for this user")
+	return selectOwnInstallation(installationsResp.Installations, githubUserID)
+}
+
+func selectOwnInstallation(installations []types.GitHubInstallation, githubUserID int64) (int64, error) {
+	for _, inst := range installations {
+		if inst.Account.ID == githubUserID {
+			return inst.ID, nil
+		}
 	}
 
-	return installationsResp.Installations[0].ID, nil
+	if len(installations) == 0 {
+		return 0, fmt.Errorf("no installations found for this user")
+	}
+	return 0, fmt.Errorf("no installation found on the authenticated user's own account")
 }
 
 func GetAccessToken(cfg *config.Config, payloadCode string, ctx context.Context) (types.GitHubTokenResponse, error) {
