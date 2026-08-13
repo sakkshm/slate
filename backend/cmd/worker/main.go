@@ -130,12 +130,21 @@ func main() {
 
 	logger.Info("worker ready. listening for build jobs")
 
+	lastReclaim := time.Time{}
+	reclaimInterval := 30 * time.Second
+	reclaimMinIdle := 2 * time.Minute
+
 	for {
 		select {
 		case <-ctx.Done():
 			logger.Info("worker stopped")
 			return
 		default:
+		}
+
+		if time.Since(lastReclaim) >= reclaimInterval {
+			lastReclaim = time.Now()
+			reclaimStuckBuilds(ctx, c, dockerClient, cfg, stagingRoot, "worker-1", reclaimMinIdle)
 		}
 
 		event, msgID, err := queue.ClaimBuildRequest(ctx, c.Redis, "worker-1")
@@ -151,114 +160,154 @@ func main() {
 			continue
 		}
 
-		buildID, err := uuid.Parse(event.BuildID)
-		if err != nil {
-			logger.Error("invalid build ID", "build_id", event.BuildID, "error", err)
-			queue.AckBuild(ctx, c.Redis, msgID)
-			continue
+		processBuild(ctx, c, dockerClient, cfg, stagingRoot, event, msgID)
+	}
+}
+
+func reclaimStuckBuilds(ctx context.Context, c *clients.Clients, dockerClient *client.Client, cfg *config.Config, stagingRoot, consumerName string, minIdle time.Duration) {
+	events, ids, err := queue.ReclaimStuckBuilds(ctx, c.Redis, consumerName, minIdle)
+	if err != nil {
+		logger.Error("failed to reclaim stuck builds", "error", err)
+		return
+	}
+	for i := range events {
+		logger.Info("reclaiming stuck build", "build_id", events[i].BuildID)
+		processBuild(ctx, c, dockerClient, cfg, stagingRoot, events[i], ids[i])
+	}
+}
+
+func processBuild(ctx context.Context, c *clients.Clients, dockerClient *client.Client, cfg *config.Config, stagingRoot string, event *types.BuildEvent, msgID string) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("panic while processing build, leaving message pending for reclaim", "build_id", event.BuildID, "panic", r)
 		}
+	}()
 
-		projectID, err := uuid.Parse(event.ProjectID)
-		if err != nil {
-			logger.Error("invalid project ID", "project_id", event.ProjectID, "error", err)
-			queue.AckBuild(ctx, c.Redis, msgID)
-			continue
-		}
+	buildID, err := uuid.Parse(event.BuildID)
+	if err != nil {
+		logger.Error("invalid build ID", "build_id", event.BuildID, "error", err)
+		queue.AckBuild(ctx, c.Redis, msgID)
+		return
+	}
 
-		claimed, err := build.UpdateBuildStatusIfQueued(c.DB, buildID, ctx)
-		if err != nil {
-			logger.Error("failed to update build status", "build_id", buildID, "error", err)
-			queue.AckBuild(ctx, c.Redis, msgID)
-			continue
-		}
-		if !claimed {
-			logger.Info("build cancelled while queued, skipping", "build_id", buildID)
-			queue.AckBuild(ctx, c.Redis, msgID)
-			continue
-		}
-		reportCommitStatus(cfg, event, "pending", "Build started")
+	projectID, err := uuid.Parse(event.ProjectID)
+	if err != nil {
+		logger.Error("invalid project ID", "project_id", event.ProjectID, "error", err)
+		queue.AckBuild(ctx, c.Redis, msgID)
+		return
+	}
 
-		startTime := time.Now()
-		stagingDir := filepath.Join(stagingRoot, buildID.String())
-		os.MkdirAll(stagingDir, 0755)
+	claimed, err := build.UpdateBuildStatusIfQueued(c.DB, buildID, ctx)
+	if err != nil {
+		logger.Error("failed to update build status", "build_id", buildID, "error", err)
+		queue.AckBuild(ctx, c.Redis, msgID)
+		return
+	}
+	if !claimed {
+		logger.Info("build cancelled while queued, skipping", "build_id", buildID)
+		queue.AckBuild(ctx, c.Redis, msgID)
+		return
+	}
+	reportCommitStatus(cfg, event, "pending", "Build started")
 
-		buildReq := runner.BuildRequest{
-			ID:                      buildID.String(),
-			RepoURL:                 event.RepoURL,
-			InstallationAccessToken: event.InstallationAccessToken,
-			CommitSHA:               event.CommitSHA,
-			RootDir:                 event.RootDir,
-			InstallCmd:              event.InstallCmd,
-			BuildCmd:                event.BuildCmd,
-			OutDir:                  event.OutDir,
-			Env:                     event.Env,
-			StagingDir:              stagingDir,
-			LogSink:                 buildLogSink(c.Redis, buildID.String()),
-		}
+	startTime := time.Now()
+	stagingDir := filepath.Join(stagingRoot, buildID.String())
+	os.MkdirAll(stagingDir, 0755)
+	workDir := filepath.Join(stagingDir, "workspace")
+	os.MkdirAll(workDir, 0755)
 
-		buildTimeout := time.Duration(cfg.BuildTimeout) * time.Second
-		buildCtx, buildCancel := context.WithTimeout(ctx, buildTimeout)
+	buildReq := runner.BuildRequest{
+		ID:                      buildID.String(),
+		RepoURL:                 event.RepoURL,
+		InstallationAccessToken: event.InstallationAccessToken,
+		CommitSHA:               event.CommitSHA,
+		RootDir:                 event.RootDir,
+		InstallCmd:              event.InstallCmd,
+		BuildCmd:                event.BuildCmd,
+		OutDir:                  event.OutDir,
+		Env:                     event.Env,
+		StagingDir:              stagingDir,
+		WorkDir:                 workDir,
+		LogSink:                 buildLogSink(c.Redis, buildID.String()),
+	}
 
-		cancelSub := c.Redis.Subscribe(ctx, queue.CancelChannelKey(buildID.String()))
-		go func() {
-			for {
-				if _, err := cancelSub.ReceiveMessage(ctx); err != nil {
-					return
-				}
-				buildCancel()
+	buildTimeout := time.Duration(cfg.BuildTimeout) * time.Second
+	buildCtx, buildCancel := context.WithTimeout(ctx, buildTimeout)
+
+	cancelSub := c.Redis.Subscribe(ctx, queue.CancelChannelKey(buildID.String()))
+	go func() {
+		for {
+			if _, err := cancelSub.ReceiveMessage(ctx); err != nil {
 				return
 			}
-		}()
-
-		containerID, statusCode, _, err := runner.RunBuild(buildCtx, dockerClient, buildReq)
-		buildCancel()
-		cancelSub.Close()
-
-		duration := time.Since(startTime).Milliseconds()
-
-		if errors.Is(err, context.Canceled) {
-			logger.Info("build cancelled", "build_id", buildID)
-			build.UpdateBuildStatus(c.DB, buildID, "cancelled", ctx)
-			build.UpdateBuildDuration(c.DB, buildID, duration, ctx)
-			cleanupContainer(ctx, dockerClient, containerID)
-			os.RemoveAll(stagingDir)
-			archiveBuildLogs(ctx, c, buildID)
-			reportCommitStatus(cfg, event, "failure", "Build cancelled")
-			queue.AckBuild(ctx, c.Redis, msgID)
-			continue
+			buildCancel()
+			return
 		}
+	}()
 
-		if err != nil || statusCode != 0 {
-			logger.Error("build failed", "build_id", buildID, "exit_code", statusCode, "error", err)
-			build.UpdateBuildStatus(c.DB, buildID, "failed", ctx)
-			build.UpdateBuildDuration(c.DB, buildID, duration, ctx)
-			cleanupContainer(ctx, dockerClient, containerID)
-			os.RemoveAll(stagingDir)
-			archiveBuildLogs(ctx, c, buildID)
-			reportCommitStatus(cfg, event, "failure", "Build failed")
-			queue.AckBuild(ctx, c.Redis, msgID)
-			continue
-		}
+	containerID, statusCode, _, err := runner.RunBuild(buildCtx, dockerClient, buildReq)
+	buildCancel()
+	cancelSub.Close()
 
-		logger.Info("build completed, uploading artifacts", "build_id", buildID)
+	duration := time.Since(startTime).Milliseconds()
 
-		hash, tempFile, err := createArtifactArchive(stagingDir)
+	if errors.Is(err, context.Canceled) {
+		logger.Info("build cancelled", "build_id", buildID)
+		build.UpdateBuildStatus(c.DB, buildID, "cancelled", ctx)
+		build.UpdateBuildDuration(c.DB, buildID, duration, ctx)
+		cleanupContainer(ctx, dockerClient, containerID)
+		os.RemoveAll(stagingDir)
+		archiveBuildLogs(ctx, c, buildID)
+		reportCommitStatus(cfg, event, "failure", "Build cancelled")
+		queue.AckBuild(ctx, c.Redis, msgID)
+		return
+	}
+
+	if err != nil || statusCode != 0 {
+		logger.Error("build failed", "build_id", buildID, "exit_code", statusCode, "error", err)
+		build.UpdateBuildStatus(c.DB, buildID, "failed", ctx)
+		build.UpdateBuildDuration(c.DB, buildID, duration, ctx)
+		cleanupContainer(ctx, dockerClient, containerID)
+		os.RemoveAll(stagingDir)
+		archiveBuildLogs(ctx, c, buildID)
+		reportCommitStatus(cfg, event, "failure", "Build failed")
+		queue.AckBuild(ctx, c.Redis, msgID)
+		return
+	}
+
+	logger.Info("build completed, uploading artifacts", "build_id", buildID)
+
+	hash, tempFile, err := createArtifactArchive(stagingDir)
+	if err != nil {
+		logger.Error("failed to create artifact archive", "build_id", buildID, "error", err)
+		build.UpdateBuildStatus(c.DB, buildID, "failed", ctx)
+		cleanupContainer(ctx, dockerClient, containerID)
+		os.RemoveAll(stagingDir)
+		archiveBuildLogs(ctx, c, buildID)
+		reportCommitStatus(cfg, event, "failure", "Build failed")
+		queue.AckBuild(ctx, c.Redis, msgID)
+		return
+	}
+
+	assetKey := fmt.Sprintf("projects/%s/builds/%s.tar.gz", projectID, hash)
+
+	exists, err := c.MinIO.Exists(ctx, assetKey)
+	if err != nil {
+		logger.Error("failed to check artifact existence", "build_id", buildID, "error", err)
+		os.Remove(tempFile)
+		build.UpdateBuildStatus(c.DB, buildID, "failed", ctx)
+		cleanupContainer(ctx, dockerClient, containerID)
+		os.RemoveAll(stagingDir)
+		archiveBuildLogs(ctx, c, buildID)
+		reportCommitStatus(cfg, event, "failure", "Build failed")
+		queue.AckBuild(ctx, c.Redis, msgID)
+		return
+	}
+
+	if !exists {
+		f, err := os.Open(tempFile)
 		if err != nil {
-			logger.Error("failed to create artifact archive", "build_id", buildID, "error", err)
-			build.UpdateBuildStatus(c.DB, buildID, "failed", ctx)
-			cleanupContainer(ctx, dockerClient, containerID)
-			os.RemoveAll(stagingDir)
-			archiveBuildLogs(ctx, c, buildID)
-			reportCommitStatus(cfg, event, "failure", "Build failed")
-			queue.AckBuild(ctx, c.Redis, msgID)
-			continue
-		}
-
-		assetKey := fmt.Sprintf("projects/%s/builds/%s.tar.gz", projectID, hash)
-
-		exists, err := c.MinIO.Exists(ctx, assetKey)
-		if err != nil {
-			logger.Error("failed to check artifact existence", "build_id", buildID, "error", err)
+			logger.Error("failed to open temp file", "build_id", buildID, "error", err)
 			os.Remove(tempFile)
 			build.UpdateBuildStatus(c.DB, buildID, "failed", ctx)
 			cleanupContainer(ctx, dockerClient, containerID)
@@ -266,68 +315,53 @@ func main() {
 			archiveBuildLogs(ctx, c, buildID)
 			reportCommitStatus(cfg, event, "failure", "Build failed")
 			queue.AckBuild(ctx, c.Redis, msgID)
-			continue
+			return
 		}
 
-		if !exists {
-			f, err := os.Open(tempFile)
-			if err != nil {
-				logger.Error("failed to open temp file", "build_id", buildID, "error", err)
-				os.Remove(tempFile)
-				build.UpdateBuildStatus(c.DB, buildID, "failed", ctx)
-				cleanupContainer(ctx, dockerClient, containerID)
-				os.RemoveAll(stagingDir)
-				archiveBuildLogs(ctx, c, buildID)
-				reportCommitStatus(cfg, event, "failure", "Build failed")
-				queue.AckBuild(ctx, c.Redis, msgID)
-				continue
-			}
-
-			stat, _ := f.Stat()
-			if err := c.MinIO.Upload(ctx, assetKey, f, stat.Size()); err != nil {
-				logger.Error("failed to upload artifacts", "build_id", buildID, "error", err)
-				f.Close()
-				os.Remove(tempFile)
-				build.UpdateBuildStatus(c.DB, buildID, "failed", ctx)
-				cleanupContainer(ctx, dockerClient, containerID)
-				os.RemoveAll(stagingDir)
-				archiveBuildLogs(ctx, c, buildID)
-				reportCommitStatus(cfg, event, "failure", "Build failed")
-				queue.AckBuild(ctx, c.Redis, msgID)
-				continue
-			}
+		stat, _ := f.Stat()
+		if err := c.MinIO.Upload(ctx, assetKey, f, stat.Size()); err != nil {
+			logger.Error("failed to upload artifacts", "build_id", buildID, "error", err)
 			f.Close()
+			os.Remove(tempFile)
+			build.UpdateBuildStatus(c.DB, buildID, "failed", ctx)
+			cleanupContainer(ctx, dockerClient, containerID)
+			os.RemoveAll(stagingDir)
+			archiveBuildLogs(ctx, c, buildID)
+			reportCommitStatus(cfg, event, "failure", "Build failed")
+			queue.AckBuild(ctx, c.Redis, msgID)
+			return
 		}
-
-		os.Remove(tempFile)
-
-		if err := build.UpdateBuildAssetLocation(c.DB, buildID, hash, ctx); err != nil {
-			logger.Error("failed to update asset location", "build_id", buildID, "error", err)
-		}
-
-		build.UpdateBuildDuration(c.DB, buildID, duration, ctx)
-
-		if err := build.UpdateBuildStatus(c.DB, buildID, "ready", ctx); err != nil {
-			logger.Error("failed to update build status", "build_id", buildID, "error", err)
-		}
-
-		err = queue.PublishDeployment(ctx, c.Redis, event.Slug, queue.DeployEntry{
-			ProjectID: projectID.String(),
-			AssetHash: hash,
-			UpdatedAt: time.Now().UTC().Format(time.RFC3339),
-		})
-		if err != nil {
-			logger.Error("failed to publish deployment", "build_id", buildID, "slug", event.Slug, "error", err)
-		}
-
-		logger.Info("build deployed", "build_id", buildID, "hash", hash)
-
-		cleanupContainer(ctx, dockerClient, containerID)
-		os.RemoveAll(stagingDir)
-		archiveBuildLogs(ctx, c, buildID)
-		reportCommitStatus(cfg, event, "success", "Build succeeded")
-		queue.AckBuild(ctx, c.Redis, msgID)
+		f.Close()
 	}
+
+	os.Remove(tempFile)
+
+	if err := build.UpdateBuildAssetLocation(c.DB, buildID, hash, ctx); err != nil {
+		logger.Error("failed to update asset location", "build_id", buildID, "error", err)
+	}
+
+	build.UpdateBuildDuration(c.DB, buildID, duration, ctx)
+
+	if err := build.UpdateBuildStatus(c.DB, buildID, "ready", ctx); err != nil {
+		logger.Error("failed to update build status", "build_id", buildID, "error", err)
+	}
+
+	err = queue.PublishDeployment(ctx, c.Redis, event.Slug, queue.DeployEntry{
+		ProjectID: projectID.String(),
+		AssetHash: hash,
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+	})
+	if err != nil {
+		logger.Error("failed to publish deployment", "build_id", buildID, "slug", event.Slug, "error", err)
+	}
+
+	logger.Info("build deployed", "build_id", buildID, "hash", hash)
+
+	cleanupContainer(ctx, dockerClient, containerID)
+	os.RemoveAll(stagingDir)
+	archiveBuildLogs(ctx, c, buildID)
+	reportCommitStatus(cfg, event, "success", "Build succeeded")
+	queue.AckBuild(ctx, c.Redis, msgID)
 }
 
 func cleanupContainer(ctx context.Context, dockerClient *client.Client, containerID string) {
