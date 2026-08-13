@@ -26,6 +26,7 @@ type BuildRequest struct {
 	RootDir    string
 	OutDir     string
 	StagingDir string
+	WorkDir    string
 
 	Env     []string
 	LogSink func(line string)
@@ -83,7 +84,7 @@ func RunBuild(ctx context.Context, cli *client.Client, req BuildRequest) (string
 	config := &container.Config{
 		Image:      ImageName,
 		Cmd:        []string{"sh", "-c", templateCmd},
-		Env:        req.Env,
+		Env:        append(req.Env, "npm_config_cache=/app/.npm-cache"),
 		WorkingDir: "/app",
 		User:       "root",
 	}
@@ -94,6 +95,9 @@ func RunBuild(ctx context.Context, cli *client.Client, req BuildRequest) (string
 	if req.StagingDir != "" {
 		stagingTarget := req.StagingDir + ":/staging"
 		binds = append(binds, stagingTarget)
+	}
+	if req.WorkDir != "" {
+		binds = append(binds, req.WorkDir+":/app")
 	}
 
 	containerID, err := StartDockerContainer(ctx, cli, ImageName, containerName, config, binds...)

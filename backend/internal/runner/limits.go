@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -40,18 +41,30 @@ func EnsureIsolatedNetwork(ctx context.Context, cli *client.Client) error {
 func BuildHostConfig(binds ...string) *container.HostConfig {
 	isInitEnabled := true
 
+	tmpfs := map[string]string{
+		"/tmp":  "rw,noexec,nosuid,size=512m",
+		"/root": "rw,noexec,nosuid,size=512m",
+	}
+
+	appBound := false
+	for _, b := range binds {
+		if strings.HasSuffix(b, ":/app") {
+			appBound = true
+			break
+		}
+	}
+	if !appBound {
+		tmpfs["/app"] = "rw,exec,nosuid,size=2g"
+	}
+
 	return &container.HostConfig{
 		ReadonlyRootfs: true,
 		SecurityOpt:    []string{"no-new-privileges"},
 		CapDrop:        []string{"ALL"},
 		Init:           &isInitEnabled,
-		Tmpfs: map[string]string{
-			"/tmp":  "rw,noexec,nosuid,size=512m",
-			"/root": "rw,noexec,nosuid,size=512m",
-			"/app":  "rw,exec,nosuid,size=2g",
-		},
-		NetworkMode: container.NetworkMode(NetworkName),
-		Binds:       binds,
+		Tmpfs:          tmpfs,
+		NetworkMode:    container.NetworkMode(NetworkName),
+		Binds:          binds,
 		Resources: container.Resources{
 			Memory:         memoryBytes,
 			NanoCPUs:       cpuCores,
