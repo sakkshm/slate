@@ -22,8 +22,10 @@ func GetOAuthURL(cfg *config.Config, stateToken string) string {
 }
 
 func GetInstallURL(cfg *config.Config) string {
-	return fmt.Sprintf("https://github.com/apps/%s/installations/new?setup_action=install",
+	redirectAfter := url.QueryEscape(cfg.AppURL + "/auth/github/callback")
+	return fmt.Sprintf("https://github.com/apps/%s/installations/new?setup_action=install&redirect_after=%s",
 		cfg.GithubAppSlug,
+		redirectAfter,
 	)
 }
 

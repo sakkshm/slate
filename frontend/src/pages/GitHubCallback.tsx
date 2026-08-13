@@ -12,10 +12,29 @@ export const GitHubCallback = () => {
 
   const code = searchParams.get('code');
   const state = searchParams.get('state');
+  const postInstall = searchParams.get('setup_action') !== null || searchParams.get('installation_id') !== null;
   const invalidURL = !code || !state;
 
   useEffect(() => {
     if (!code || !state) {
+      if (postInstall) {
+        // Arrived back from the GitHub App install flow. GitHub redirects here
+        // without code/state; re-run OAuth now that the app is installed so we
+        // can exchange a code and finish login.
+        apiClient.get<{ url: string }>('/api/auth/github/initiate-login')
+          .then((data) => {
+            window.location.href = data.url;
+          })
+          .catch((err: unknown) => {
+            const error = err as APIError;
+            toast.error(`Unable to redirect to provider: ${error.code}`, {
+              description: `${error.message} (Status: ${error.status})`,
+            });
+            navigate('/');
+          });
+        return;
+      }
+
       toast.error("Malformed Callback URL", {
             description: "The URL does not contain either code or state params..",
       });
@@ -41,7 +60,7 @@ export const GitHubCallback = () => {
           navigate('/');
         }
       });
-  }, [code, state, navigate]);
+  }, [code, state, postInstall, navigate]);
 
   const handleInstall = async () => {
     try {
@@ -68,7 +87,7 @@ export const GitHubCallback = () => {
     );
   }
 
-  else if(invalidURL){
+  else if (invalidURL && !postInstall){
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="flex flex-col items-center gap-4">
