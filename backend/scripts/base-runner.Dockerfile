@@ -1,3 +1,5 @@
-FROM node:20-alpine AS base
-RUN apk add --no-cache git python3 make g++ linux-headers
+FROM node:20-bookworm AS base
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
