@@ -23,7 +23,7 @@ func main() {
 
 	// Configure System
 	cfg := config.LoadConfig()
-	slog.SetDefault(logging.New(cfg.Environment))
+	slog.SetDefault(logging.New(cfg))
 
 	c, err := clients.New(cfg)
 	if err != nil {

@@ -229,7 +229,8 @@ A Vite + React 19 + TypeScript SPA using Tailwind v4 (shadcn/Base UI) with
   (200/503), used by the prod compose healthcheck.
 - **Graceful shutdown** — both processes cancel in-flight work on SIGTERM; the
   API drains with a 5s deadline, the worker aborts running Docker builds.
-- **Logging** — `slog`, JSON in production, human-readable in development, each
+- **Logging** — `slog`, configurable via `LOG_FORMAT` (JSON by default in
+  production, text in development) and `LOG_LEVEL`, each
   component tagged with `component=api` / `component=worker`.
 - **Pruners** — two independent jobs: the worker prunes MinIO artifacts
   (30-day default retention) and the API prunes the gateway disk cache (24h

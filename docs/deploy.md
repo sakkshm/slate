@@ -124,7 +124,8 @@ origins carry no CORS headers. Only the configured origins are allowed; credenti
 
 - **Health**: `GET /health` returns `200 {"status":"ok",...}` when DB, Redis and MinIO
   are reachable, `503` otherwise. Used by the api-prod healthcheck.
-- **Logging**: `slog` — JSON in production, human-readable text in development. Each
+- **Logging**: `slog` — `LOG_FORMAT=json` (default in production) or `text`
+  (human-readable), `LOG_LEVEL=debug|info|warn|error`. Each
   component tags lines with `component=api` / `component=worker`.
 - **Deployment cache**: extracted sites live under `/tmp/slate-deploy/<slug>/<hash>`
   with a 24h TTL; the gateway falls back to Postgres + MinIO when a cache entry is

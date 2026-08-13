@@ -21,6 +21,9 @@ type Config struct {
 	CORSAllowedOrigins []string
 	TrustedProxyIPs    []string
 
+	LogFormat string
+	LogLevel  string
+
 	RateGlobalRps  int
 	RateAuthRpm    int
 	RateWebhookRpm int
@@ -55,8 +58,15 @@ func LoadConfig() *Config {
 	pemFilePath := getRequiredEnv("GITHUB_PRIVATE_KEY_PATH")
 	privateKey := loadPEMFile(pemFilePath)
 
+	environment := getRequiredEnv("APP_ENV")
+
+	defaultLogFormat := "text"
+	if environment == "production" {
+		defaultLogFormat = "json"
+	}
+
 	cfg := &Config{
-		Environment:    getRequiredEnv("APP_ENV"),
+		Environment:    environment,
 		DatabaseURL:    getRequiredEnv("DATABASE_URL"),
 		AppURL:         getEnvWithDefault("APP_URL", "http://localhost:5173"),
 		EncryptionKey:  getRequiredEnv("ENCRYPTION_KEY"),
@@ -68,6 +78,9 @@ func LoadConfig() *Config {
 
 		CORSAllowedOrigins: getCSVEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173"),
 		TrustedProxyIPs:    getCSVEnv("TRUSTED_PROXY_IPS", ""),
+
+		LogFormat: getEnvWithDefault("LOG_FORMAT", defaultLogFormat),
+		LogLevel:  getEnvWithDefault("LOG_LEVEL", "info"),
 
 		RateGlobalRps:  getEnvIntWithDefault("RATE_GLOBAL_RPS", 50),
 		RateAuthRpm:    getEnvIntWithDefault("RATE_AUTH_RPM", 10),

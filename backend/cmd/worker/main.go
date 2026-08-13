@@ -92,7 +92,7 @@ func reportCommitStatus(cfg *config.Config, event *types.BuildEvent, state, desc
 
 func main() {
 	cfg := config.LoadConfig()
-	slog.SetDefault(logging.New(cfg.Environment))
+	slog.SetDefault(logging.New(cfg))
 	logger = slog.Default().With("component", "worker")
 
 	c, err := clients.New(cfg)
