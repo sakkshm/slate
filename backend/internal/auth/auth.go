@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"slate-backend/pkg/config"
@@ -142,13 +143,16 @@ func GetUserProfile(cfg *config.Config, accessToken string, ctx context.Context)
 		return types.GitHubAuthUserResponse{}, fmt.Errorf("failed to decode GitHub profile response: %w", err)
 	}
 
-	// If public profile has email hidden, query the explicit sub-resource
+	// If public profile has email hidden, query the explicit sub-resource.
+	// Resolving the email is best-effort: GitHub App tokens can be denied the
+	// /user/emails resource (missing email permission), and a login must not
+	// fail just because the user keeps their email private.
 	if userResp.Email == "" {
-		email, err := getPrimaryEmail(accessToken, ctx)
-		if err != nil {
-			return types.GitHubAuthUserResponse{}, fmt.Errorf("failed to resolve user primary email fallback: %w", err)
+		if email, err := getPrimaryEmail(accessToken, ctx); err == nil {
+			userResp.Email = email
+		} else {
+			slog.Default().Warn("failed to resolve user primary email, continuing without it", "error", err)
 		}
-		userResp.Email = email
 	}
 
 	return userResp, nil
